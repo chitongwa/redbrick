@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../config/theme.dart';
+import '../models/trade_credit_order.dart';
 import '../providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/meter_provider.dart';
 import '../widgets/bolt_icon.dart';
 import '../widgets/error_banner.dart';
+import '../widgets/tier_badge.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -16,10 +19,23 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  Timer? _countdownTimer;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadDashboard());
+    // Tick every second for countdown timer
+    _countdownTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) { if (mounted) setState(() {}); },
+    );
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
   }
 
   void _loadDashboard() {
@@ -57,38 +73,70 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Welcome
-            Text('Welcome back, $userName',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.navy)),
-            const SizedBox(height: 4),
-            Text(
-              'Meter: ${ref.watch(selectedMeterProvider)?.meterNumber ?? '—'}',
-              style: const TextStyle(color: AppColors.grey400, fontSize: 12),
+            // ── Welcome + Tier badge ─────────────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Welcome back, $userName',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.navy)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Meter: ${ref.watch(selectedMeterProvider)?.meterNumber ?? '—'}',
+                        style: const TextStyle(color: AppColors.grey400, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                dashState.whenOrNull(
+                  data: (data) => TierBadge(tier: data.tier),
+                ) ?? const SizedBox.shrink(),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
-            // Balance card / Loading / Error
+            // ── Frozen account banner ────────────────────────────────
+            dashState.whenOrNull(
+              data: (data) => data.accountFrozen ? _buildFrozenBanner() : null,
+            ) ?? const SizedBox.shrink(),
+
+            // ── Outstanding order banner with countdown ──────────────
+            dashState.whenOrNull(
+              data: (data) {
+                if (data.outstandingOrder != null && data.outstandingOrder!.isPending) {
+                  return _buildOutstandingBanner(data.outstandingOrder!);
+                }
+                return null;
+              },
+            ) ?? const SizedBox.shrink(),
+
+            // ── Balance card / Loading / Error ───────────────────────
             dashState.when(
               loading: () => _buildBalanceCardLoading(),
               error: (e, _) => ErrorBanner(message: friendlyError(e), onRetry: _loadDashboard),
               data: (data) => _buildBalanceCard(data),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
-            // Quick actions
-            Row(
-              children: [
-                _actionButton('Top Up', Icons.bolt_rounded, AppColors.navy, () {}),
-                const SizedBox(width: 10),
-                _actionButton('Pay Later', Icons.credit_card, AppColors.brick, () => context.push('/pay-later')),
-                const SizedBox(width: 10),
-                _actionButton('History', Icons.history, AppColors.grey400, () => context.push('/history')),
-              ],
+            // ── Graduation progress (Tier 1 only) ───────────────────
+            dashState.whenOrNull(
+              data: (data) => data.isTier1 ? _buildGraduationProgress(data) : null,
+            ) ?? const SizedBox.shrink(),
+
+            const SizedBox(height: 12),
+
+            // ── Quick actions ────────────────────────────────────────
+            dashState.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (data) => _buildQuickActions(data),
             ),
             const SizedBox(height: 24),
 
-            // Recent transactions
+            // ── Recent transactions ──────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -112,6 +160,179 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
+
+  // ── Frozen account banner ──────────────────────────────────────────────
+
+  Widget _buildFrozenBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.redLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.red.withAlpha(60)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_rounded, color: AppColors.red, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Account Frozen',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.red)),
+                const SizedBox(height: 2),
+                const Text('You have an overdue trade credit payment.',
+                    style: TextStyle(fontSize: 12, color: AppColors.red)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: () => context.go('/get-electricity'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.red,
+              foregroundColor: AppColors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: Size.zero,
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+            child: const Text('Pay Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Outstanding order banner with countdown ────────────────────────────
+
+  Widget _buildOutstandingBanner(TradeCreditOrder order) {
+    final remaining = order.timeRemaining;
+    final isOverdue = order.isOverdue;
+
+    String countdownText;
+    if (remaining == null || isOverdue) {
+      countdownText = 'OVERDUE';
+    } else {
+      final h = remaining.inHours;
+      final m = remaining.inMinutes % 60;
+      final s = remaining.inSeconds % 60;
+      countdownText = '${h}h ${m}m ${s}s';
+    }
+
+    final bgColor = isOverdue ? AppColors.redLight : AppColors.goldLight;
+    final accentColor = isOverdue ? AppColors.red : AppColors.gold;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accentColor.withAlpha(60)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.timer_outlined, color: accentColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Outstanding: ZMW ${order.totalDue.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: accentColor),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: accentColor.withAlpha(30),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  countdownText,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'monospace',
+                    color: accentColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => context.go('/get-electricity'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: accentColor,
+                foregroundColor: AppColors.white,
+                minimumSize: const Size.fromHeight(36),
+                textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+              child: Text('Pay ZMW ${order.totalDue.toStringAsFixed(2)} Now'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Graduation progress bar (Tier 1) ──────────────────────────────────
+
+  Widget _buildGraduationProgress(DashboardData data) {
+    final progress = data.graduationProgress;
+    const target = 6;
+    final pct = (progress / target).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withAlpha(8), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.star_rounded, size: 18, color: AppColors.gold),
+              const SizedBox(width: 6),
+              const Text('Path to Credit Member',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy)),
+              const Spacer(),
+              Text('$progress of $target',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.gold)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 8,
+              backgroundColor: AppColors.grey200,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.gold),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            progress >= target
+                ? 'You may qualify for Credit Member status!'
+                : '$progress of $target transactions completed towards Credit Member status',
+            style: const TextStyle(fontSize: 11, color: AppColors.grey400),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Balance card ──────────────────────────────────────────────────────
 
   Widget _buildBalanceCardLoading() {
     return Container(
@@ -151,22 +372,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Credit Limit', style: TextStyle(color: AppColors.grey400, fontSize: 10)),
-                  Text('ZMW ${data.creditLimit.toStringAsFixed(2)}',
-                      style: const TextStyle(color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text(data.isTier2 ? 'Credit Limit' : 'Service Fee',
+                      style: const TextStyle(color: AppColors.grey400, fontSize: 10)),
+                  Text(
+                    data.isTier2 ? 'ZMW ${data.creditLimit.toStringAsFixed(2)}' : '4% per purchase',
+                    style: const TextStyle(color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
                 ]),
               ),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Outstanding', style: TextStyle(color: AppColors.grey400, fontSize: 10)),
-                  Text('ZMW ${data.outstandingBorrowed.toStringAsFixed(2)}',
-                      style: const TextStyle(color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text(data.isTier2 ? 'Outstanding' : 'Completed',
+                      style: const TextStyle(color: AppColors.grey400, fontSize: 10)),
+                  Text(
+                    data.isTier2
+                        ? 'ZMW ${data.outstandingBorrowed.toStringAsFixed(2)}'
+                        : '${data.tradeCreditTransactions} transactions',
+                    style: const TextStyle(color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
                 ]),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  // ── Quick actions (tier-aware) ────────────────────────────────────────
+
+  Widget _buildQuickActions(DashboardData data) {
+    if (data.isTier2) {
+      return Row(
+        children: [
+          _actionButton('Top Up', Icons.bolt_rounded, AppColors.navy, () {}),
+          const SizedBox(width: 10),
+          _actionButton('Borrow', Icons.account_balance_wallet_rounded, AppColors.gold, () => context.push('/credit')),
+          const SizedBox(width: 10),
+          _actionButton('History', Icons.history, AppColors.grey400, () => context.push('/history')),
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        _actionButton('Get\nElectricity', Icons.bolt_rounded, AppColors.brick, () => context.push('/get-electricity')),
+        const SizedBox(width: 10),
+        _actionButton('History', Icons.history, AppColors.navy, () => context.push('/history')),
+        const SizedBox(width: 10),
+        _actionButton('Account', Icons.person_outline, AppColors.grey400, () => context.push('/account')),
+      ],
     );
   }
 
@@ -184,13 +439,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: [
               Icon(icon, color: AppColors.white, size: 22),
               const SizedBox(height: 4),
-              Text(label, style: const TextStyle(color: AppColors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text(label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.white, fontSize: 12, fontWeight: FontWeight.w600)),
             ],
           ),
         ),
       ),
     );
   }
+
+  // ── Recent transactions ───────────────────────────────────────────────
 
   Widget _buildRecentTx(List<Map<String, dynamic>> txs) {
     if (txs.isEmpty) {

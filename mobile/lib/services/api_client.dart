@@ -35,6 +35,13 @@ class ApiClient {
         'otp': otp,
       });
 
+  // ── Users ─────────────────────────────────────────────────────────────
+
+  Future<Response> getMe() async {
+    await _injectToken();
+    return _dio.get('/users/me');
+  }
+
   // ── Meters ────────────────────────────────────────────────────────────
 
   Future<Response> addMeter(String meterNumber) async {
@@ -60,7 +67,33 @@ class ApiClient {
     });
   }
 
-  // ── Loans ─────────────────────────────────────────────────────────────
+  // ── Trade Credit (Tier 1) ────────────────────────────────────────────
+
+  Future<Response> purchaseTradeCredit(int meterId, double amount) async {
+    await _injectToken();
+    return _dio.post('/trade-credit/purchase', data: {
+      'meter_id': meterId,
+      'amount': amount,
+    });
+  }
+
+  Future<Response> payTradeCredit(int orderId, String method) async {
+    await _injectToken();
+    return _dio.post('/trade-credit/pay', data: {
+      'order_id': orderId,
+      'payment_method': method,
+    });
+  }
+
+  Future<Response> getTradeCreditOrders({int page = 1, int limit = 20}) async {
+    await _injectToken();
+    return _dio.get('/trade-credit/orders', queryParameters: {
+      'page': page,
+      'limit': limit,
+    });
+  }
+
+  // ── Loans (Tier 2) ───────────────────────────────────────────────────
 
   Future<Response> borrow(int meterId, double amount) async {
     await _injectToken();
@@ -84,5 +117,29 @@ class ApiClient {
       'amount': amount,
       'payment_method': method,
     });
+  }
+
+  // ── Pricing ───────────────────────────────────────────────────────────
+
+  Future<Response> getPricingPreview(double amount, {String? userId}) async {
+    if (userId != null) {
+      return _dio.get('/pricing/preview/$amount/$userId');
+    }
+    return _dio.get('/pricing/preview/$amount');
+  }
+
+  Future<Response> calculatePricing(String tier, double amount, {String? userId}) async {
+    return _dio.post('/pricing/calculate', data: {
+      'tier': tier,
+      'amount': amount,
+      if (userId != null) 'user_id': userId,
+    });
+  }
+
+  // ── Graduation ────────────────────────────────────────────────────────
+
+  Future<Response> getGraduationStatus(String userId) async {
+    await _injectToken();
+    return _dio.get('/graduation/status/$userId');
   }
 }

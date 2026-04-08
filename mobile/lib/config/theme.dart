@@ -15,6 +15,11 @@ class AppColors {
   static const green      = Color(0xFF16A34A);
   static const mtnYellow  = Color(0xFFFFCC00);
   static const airtelRed  = Color(0xFFDC2626);
+  static const gold       = Color(0xFFD4A017);
+  static const goldLight  = Color(0xFFFDF8E8);
+  static const goldDark   = Color(0xFF9A7611);
+  static const red        = Color(0xFFDC2626);
+  static const redLight   = Color(0xFFFEF2F2);
 }
 
 ThemeData appTheme() {
