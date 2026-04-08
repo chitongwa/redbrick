@@ -15,6 +15,11 @@ const env = {
     accountSid:     process.env.TWILIO_ACCOUNT_SID,
     authToken:      process.env.TWILIO_AUTH_TOKEN,
     phoneNumber:    process.env.TWILIO_PHONE_NUMBER,
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID, // optional
+  },
+  onesignal: {
+    appId:          process.env.ONESIGNAL_APP_ID,
+    apiKey:         process.env.ONESIGNAL_REST_API_KEY,
   },
   zesco: {
     apiUrl:         process.env.ZESCO_API_URL,

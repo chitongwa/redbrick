@@ -9,6 +9,7 @@ import { validate } from '../middleware/validate.js';
 import * as rules from '../validators/rules.js';
 import { zesco } from '../services/index.js';
 import { deductFloat } from '../services/float.js';
+import { sendLoanDisbursed } from '../services/sms-notify.js';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.post(
 
       // ── Tier gate: only Tier 2 (loan_credit) customers can borrow ──
       const userResult = await query(
-        'SELECT id, tier, account_frozen FROM users WHERE id = $1',
+        'SELECT id, tier, account_frozen, phone_number, full_name FROM users WHERE id = $1',
         [userId]
       );
 
@@ -135,6 +136,20 @@ router.post(
          VALUES ($1, $2, $3, 'redbrick')`,
         [meterId, amount, purchase.units_kwh]
       );
+
+      // Send loan disbursement notification (SMS + push)
+      const phone = borrower.phone_number || req.user.phone;
+      try {
+        await sendLoanDisbursed(
+          phone,
+          purchase.tokenCode,
+          amount,
+          dueDate.toISOString(),
+          { userId, fullName: borrower.full_name, loanId: loan.rows[0].id },
+        );
+      } catch (notifyErr) {
+        console.warn('[loans] disbursement notify failed:', notifyErr.message);
+      }
 
       res.status(201).json({
         message: 'Loan approved — tokens issued',

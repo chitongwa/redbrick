@@ -11,6 +11,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import * as rules from '../validators/rules.js';
 import env from '../config/env.js';
+import { sendGraduationCongrats } from '../services/sms-notify.js';
 
 const router = Router();
 
@@ -246,6 +247,25 @@ router.post(
            VALUES ($1, $2, 'graduation-v1')`,
           [meter.id, creditLimit]
         );
+      }
+
+      // 4. Send graduation congratulations (SMS + push) — fired on admin confirm
+      try {
+        const userProfile = await query(
+          'SELECT phone_number, full_name FROM users WHERE id = $1',
+          [record.user_id]
+        );
+        const profile = userProfile.rows[0];
+        if (profile?.phone_number) {
+          await sendGraduationCongrats(
+            profile.phone_number,
+            profile.full_name,
+            creditLimit,
+            { userId: record.user_id },
+          );
+        }
+      } catch (notifyErr) {
+        console.warn('[graduation] confirm notify failed:', notifyErr.message);
       }
 
       res.json({

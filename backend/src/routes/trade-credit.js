@@ -9,16 +9,31 @@ import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import * as rules from '../validators/rules.js';
 import { zesco, payments } from '../services/index.js';
-import { deductFloat } from '../services/float.js';
+import { reserveFloat, confirmFloat, releaseFloat } from '../services/float.js';
 import { triggerGraduationCheck } from '../services/graduation-trigger.js';
+import {
+  sendTokenDelivered,
+  sendPaymentConfirmed,
+} from '../services/sms-notify.js';
 
 const router = Router();
 
 const SERVICE_FEE_RATE = 0.04;       // 4% service fee
 const PAYMENT_WINDOW_HOURS = 48;     // Payment due within 48 hours
+const KWH_PER_ZMW = 1 / 2.5;        // ZMW to kWh conversion rate
+
 
 // ── POST /trade-credit/purchase ────────────────────────────────────────────
-// Customer gets ZESCO tokens immediately; payment due within 48hrs.
+// Full lifecycle:
+//   1. Check float balance
+//   2. Check no outstanding unpaid orders
+//   3. Check account not frozen
+//   4. Calculate amount (electricity + 4% fee)
+//   5. Create order as 'pending_payment'
+//   6. Reserve float units (hold, don't deduct)
+//   7. Call ZESCO API for token
+//   8. Deliver token via SMS
+//   9. Update order to 'token_delivered'
 router.post(
   '/purchase',
   requireAuth,
@@ -32,9 +47,13 @@ router.post(
       const meterId = parseInt(req.body.meter_id, 10);
       const electricityAmt = parseFloat(req.body.amount);
 
-      // 1. Check user tier & frozen status
+      if (electricityAmt < 10) {
+        return res.status(400).json({ error: 'Minimum purchase amount is ZMW 10' });
+      }
+
+      // ── 1. Fetch user & validate ──────────────────────────────────────
       const userResult = await query(
-        'SELECT id, tier, account_frozen FROM users WHERE id = $1',
+        'SELECT id, tier, account_frozen, phone_number, full_name FROM users WHERE id = $1',
         [userId]
       );
 
@@ -44,16 +63,30 @@ router.post(
 
       const user = userResult.rows[0];
 
+      // ── 2. Check account not frozen ───────────────────────────────────
       if (user.account_frozen) {
         return res.status(403).json({
           error: 'Account is frozen due to unpaid trade credit. Please settle outstanding orders first.',
         });
       }
 
-      // Trade credit is available to both tiers (Tier 2 customers can still use it)
-      // But the primary path for Tier 2 is /loans/borrow
+      // ── 3. Check no outstanding unpaid orders ─────────────────────────
+      const outstandingResult = await query(
+        `SELECT id FROM trade_credit_orders
+         WHERE user_id = $1
+           AND status IN ('pending_payment', 'token_delivered')
+         LIMIT 1`,
+        [userId]
+      );
 
-      // 2. Verify meter ownership
+      if (outstandingResult.rows.length > 0) {
+        return res.status(409).json({
+          error: 'You have an outstanding unpaid trade credit order. Please settle it before making a new purchase.',
+          outstanding_order_id: outstandingResult.rows[0].id,
+        });
+      }
+
+      // ── 4. Verify meter ownership ────────────────────────────────────
       const meter = await query(
         'SELECT id, meter_number, user_id, zesco_verified FROM meters WHERE id = $1',
         [meterId]
@@ -69,49 +102,75 @@ router.post(
         return res.status(422).json({ error: 'Meter not yet verified by ZESCO' });
       }
 
-      // 3. Calculate fees
+      // ── 5. Calculate fees ────────────────────────────────────────────
       const serviceFee = Math.round(electricityAmt * SERVICE_FEE_RATE * 100) / 100;
       const totalDue   = Math.round((electricityAmt + serviceFee) * 100) / 100;
+      const unitsKwh   = Math.round(electricityAmt * KWH_PER_ZMW * 100) / 100;
 
-      if (electricityAmt < 10) {
-        return res.status(400).json({ error: 'Minimum purchase amount is ZMW 10' });
-      }
+      // ── 6. Create order (pending_payment) ────────────────────────────
+      const paymentDueAt = new Date();
+      paymentDueAt.setHours(paymentDueAt.getHours() + PAYMENT_WINDOW_HOURS);
 
-      // 4. Deduct from float inventory (FIFO) and purchase tokens
-      const unitsNeeded = electricityAmt / 2.5;  // ZMW to kWh conversion
-      const floatResult = await deductFloat(
-        unitsNeeded,
-        userId,
-        `Trade credit purchase — meter ${meter.rows[0].meter_number}`
+      const order = await query(
+        `INSERT INTO trade_credit_orders
+           (user_id, meter_id, electricity_amt, service_fee, total_due,
+            units_kwh, status, payment_due_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending_payment', $7)
+         RETURNING id, user_id, meter_id, electricity_amt, service_fee, total_due,
+                   units_kwh, status, payment_due_at, created_at`,
+        [userId, meterId, electricityAmt, serviceFee, totalDue,
+         unitsKwh, paymentDueAt.toISOString()]
       );
 
+      const orderId = order.rows[0].id;
+
+      // ── 7. Reserve float (hold, don't deduct) ───────────────────────
+      const floatResult = await reserveFloat(unitsKwh, orderId);
+
       if (!floatResult.success) {
+        // Roll back the order
+        await query(
+          `UPDATE trade_credit_orders SET status = 'cancelled' WHERE id = $1`,
+          [orderId]
+        );
         return res.status(503).json({
-          error: 'Insufficient float inventory to fulfil this order',
+          error: 'Service temporarily unavailable — insufficient float inventory',
           detail: floatResult.error,
           float_alert: floatResult.alert,
         });
       }
 
-      const purchase = zesco.purchaseTokens(meter.rows[0].meter_number, electricityAmt);
-
-      // 5. Calculate payment deadline (48 hours from now)
-      const paymentDueAt = new Date();
-      paymentDueAt.setHours(paymentDueAt.getHours() + PAYMENT_WINDOW_HOURS);
-
-      // 6. Create trade credit order
-      const order = await query(
-        `INSERT INTO trade_credit_orders
-           (user_id, meter_id, electricity_amt, service_fee, total_due,
-            token_delivered, units_kwh, status, payment_due_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending_payment', $8)
-         RETURNING id, user_id, meter_id, electricity_amt, service_fee, total_due,
-                   token_delivered, units_kwh, status, payment_due_at, created_at`,
-        [userId, meterId, electricityAmt, serviceFee, totalDue,
-         purchase.tokenCode, purchase.units_kwh, paymentDueAt.toISOString()]
+      // Store reservation ID on the order
+      await query(
+        `UPDATE trade_credit_orders
+         SET float_reservation_id = $2, float_reserved = TRUE
+         WHERE id = $1`,
+        [orderId, floatResult.reservationId]
       );
 
-      // 7. Record as a transaction
+      // ── 8. Call ZESCO API for token ──────────────────────────────────
+      const purchase = zesco.purchaseTokens(meter.rows[0].meter_number, electricityAmt);
+
+      // Update order with token
+      await query(
+        `UPDATE trade_credit_orders
+         SET token_delivered = $2, status = 'token_delivered', token_sms_sent = TRUE
+         WHERE id = $1`,
+        [orderId, purchase.tokenCode]
+      );
+
+      // ── 9. Deliver token via SMS + push ───────────────────────────────
+      const phone = user.phone_number || req.user.phone;
+      await sendTokenDelivered(
+        phone,
+        purchase.tokenCode,
+        unitsKwh,
+        totalDue,
+        paymentDueAt.toISOString(),
+        { userId, fullName: user.full_name, orderId },
+      );
+
+      // ── 10. Record as a transaction ──────────────────────────────────
       await query(
         `INSERT INTO transactions (meter_id, amount_zmw, units_purchased, source)
          VALUES ($1, $2, $3, 'trade_credit')`,
@@ -120,19 +179,30 @@ router.post(
 
       res.status(201).json({
         message: 'Tokens delivered — payment due within 48 hours',
-        order: order.rows[0],
+        order: {
+          id:               orderId,
+          meter_id:         meterId,
+          electricity_amt:  electricityAmt,
+          service_fee:      serviceFee,
+          total_due:        totalDue,
+          units_kwh:        unitsKwh,
+          status:           'token_delivered',
+          payment_due_at:   paymentDueAt.toISOString(),
+          created_at:       order.rows[0].created_at,
+        },
         token: {
-          code:     purchase.tokenCode,
+          code:      purchase.tokenCode,
           units_kwh: purchase.units_kwh,
         },
         payment: {
-          total_due:       totalDue,
-          electricity_amt: electricityAmt,
-          service_fee:     serviceFee,
-          fee_rate:        `${SERVICE_FEE_RATE * 100}%`,
-          due_at:          paymentDueAt.toISOString(),
+          total_due:        totalDue,
+          electricity_amt:  electricityAmt,
+          service_fee:      serviceFee,
+          fee_rate:         `${SERVICE_FEE_RATE * 100}%`,
+          due_at:           paymentDueAt.toISOString(),
           accepted_methods: ['mtn', 'airtel'],
         },
+        float_reservation: floatResult.reservationId,
         ...(purchase.mock && { mock: true }),
         ...(floatResult.alert && { float_alert: floatResult.alert }),
       });
@@ -143,8 +213,18 @@ router.post(
   }
 );
 
+
 // ── POST /trade-credit/pay ─────────────────────────────────────────────────
 // Settle a pending trade credit order via mobile money.
+// On payment:
+//   1. Process mobile-money payment
+//   2. Confirm float reservation (record sale transactions)
+//   3. Record fee revenue
+//   4. Mark order as paid (with hours_to_pay)
+//   5. Increment completed transaction counter
+//   6. Unfreeze account if frozen
+//   7. Send payment confirmation SMS
+//   8. Auto-trigger graduation check
 router.post(
   '/pay',
   requireAuth,
@@ -160,7 +240,8 @@ router.post(
 
       // 1. Fetch order
       const orderResult = await query(
-        `SELECT id, user_id, total_due, status, payment_due_at
+        `SELECT id, user_id, total_due, service_fee, status, payment_due_at,
+                float_reservation_id, created_at
          FROM trade_credit_orders WHERE id = $1`,
         [orderId]
       );
@@ -183,6 +264,10 @@ router.post(
         return res.status(422).json({ error: 'Order has been defaulted — contact support' });
       }
 
+      if (order.status === 'cancelled') {
+        return res.status(422).json({ error: 'Order has been cancelled' });
+      }
+
       const amount = parseFloat(order.total_due);
 
       // 2. Process mobile-money payment
@@ -196,15 +281,40 @@ router.post(
         return res.status(502).json({ error: 'Payment provider rejected the transaction' });
       }
 
-      // 3. Mark order as paid
+      // 3. Confirm float reservation (converts hold → sale)
+      if (order.float_reservation_id) {
+        await confirmFloat(
+          order.float_reservation_id,
+          userId,
+          `Trade credit payment — order #${orderId}`
+        );
+      }
+
+      // 4. Calculate hours to pay
+      const createdAt = new Date(order.created_at);
+      const paidAt = new Date();
+      const hoursToPay = Math.round(((paidAt - createdAt) / 3600000) * 100) / 100;
+
+      // 5. Mark order as paid
       await query(
         `UPDATE trade_credit_orders
-         SET status = 'paid', payment_method = $2, payment_ref = $3, paid_at = now()
+         SET status = 'paid', payment_method = $2, payment_ref = $3,
+             paid_at = now(), float_confirmed = TRUE, hours_to_pay = $4
          WHERE id = $1`,
-        [orderId, method, paymentResult.reference]
+        [orderId, method, paymentResult.reference, hoursToPay]
       );
 
-      // 4. Increment user's successful trade credit count
+      // 6. Record fee revenue
+      const feeAmount = parseFloat(order.service_fee || 0);
+      if (feeAmount > 0) {
+        await query(
+          `INSERT INTO fee_revenue (order_id, user_id, fee_amount_zmw, fee_type)
+           VALUES ($1, $2, $3, 'trade_credit_service')`,
+          [orderId, userId, feeAmount]
+        );
+      }
+
+      // 7. Increment user's successful trade credit count
       await query(
         `UPDATE users
          SET trade_credit_transactions = trade_credit_transactions + 1
@@ -212,27 +322,36 @@ router.post(
         [userId]
       );
 
-      // 5. Unfreeze account if it was frozen (user is settling)
+      // 8. Unfreeze account if it was frozen
       await query(
         `UPDATE users SET account_frozen = FALSE WHERE id = $1 AND account_frozen = TRUE`,
         [userId]
       );
 
-      // 6. Auto-trigger graduation check (fire-and-forget, don't block response)
+      // 9. Auto-trigger graduation check first so we can include the hint
+      //    inside the payment-received notification body.
       let graduationHint = null;
       try {
         const gradResult = await triggerGraduationCheck(userId);
         if (gradResult && gradResult.decision === 'approved') {
-          graduationHint = 'Congratulations! You may qualify for Tier 2 Loan Credit — pending admin review.';
+          graduationHint = 'You may qualify for Tier 2 Loan Credit — pending admin review.';
         }
       } catch (gradErr) {
         console.warn('[trade-credit] graduation check failed (non-blocking):', gradErr.message);
       }
 
+      // 10. Send payment confirmation (SMS + push)
+      const phone = req.user.phone;
+      await sendPaymentConfirmed(phone, orderId, amount, method, {
+        userId,
+        graduationHint: graduationHint ?? '',
+      });
+
       res.json({
         message: 'Payment received — trade credit order settled',
         order_id:          orderId,
         amount_paid:       amount,
+        hours_to_pay:      hoursToPay,
         payment_method:    method,
         payment_reference: paymentResult.reference,
         ...(graduationHint && { graduation_hint: graduationHint }),
@@ -244,6 +363,7 @@ router.post(
     }
   }
 );
+
 
 // ── GET /trade-credit/orders ───────────────────────────────────────────────
 // List the authenticated user's trade credit orders.
@@ -260,7 +380,7 @@ router.get(
       const ordersResult = await query(
         `SELECT id, meter_id, electricity_amt, service_fee, total_due,
                 token_delivered, units_kwh, status, payment_method,
-                payment_due_at, created_at, paid_at
+                payment_due_at, created_at, paid_at, hours_to_pay
          FROM trade_credit_orders
          WHERE user_id = $1
          ORDER BY created_at DESC

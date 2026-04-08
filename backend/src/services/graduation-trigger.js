@@ -4,6 +4,7 @@
 
 import { query } from '../config/db.js';
 import env from '../config/env.js';
+import { sendGraduationCongrats } from './sms-notify.js';
 
 const SCORING_URL = process.env.SCORING_ENGINE_URL || 'http://localhost:8001';
 
@@ -14,8 +15,8 @@ const SCORING_URL = process.env.SCORING_ENGINE_URL || 'http://localhost:8001';
 export async function triggerGraduationCheck(userId) {
   // 1. Fetch user
   const userResult = await query(
-    `SELECT id, tier, trade_credit_transactions, trade_credit_default_count,
-            account_frozen, created_at
+    `SELECT id, phone_number, full_name, tier, trade_credit_transactions,
+            trade_credit_default_count, account_frozen, created_at
      FROM users WHERE id = $1`,
     [userId]
   );
@@ -105,8 +106,10 @@ export async function triggerGraduationCheck(userId) {
     result = await response.json();
   }
 
-  // 6. If approved, create graduation_pending record
+  // 6. If approved, create graduation_pending record + notify customer
   if (result.decision === 'approved') {
+    const creditLimit = result.initial_credit_limit || 20;
+
     await query(
       `INSERT INTO graduation_pending
          (user_id, decision, initial_credit_limit, criteria_snapshot, reasons, status)
@@ -120,11 +123,20 @@ export async function triggerGraduationCheck(userId) {
       [
         userId,
         result.decision,
-        result.initial_credit_limit || 20,
+        creditLimit,
         JSON.stringify(result.criteria_met || {}),
         JSON.stringify(result.reasons || []),
       ]
     );
+
+    // 7. Notify customer via SMS + push (templated)
+    try {
+      await sendGraduationCongrats(user.phone_number, user.full_name, creditLimit, {
+        userId: user.id,
+      });
+    } catch (e) {
+      console.error('[graduation-trigger] notify failed:', e.message);
+    }
   }
 
   return result;

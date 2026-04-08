@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import * as rules from '../validators/rules.js';
 import { payments } from '../services/index.js';
+import { sendLoanRepaid } from '../services/sms-notify.js';
 
 const router = Router();
 
@@ -90,6 +91,35 @@ router.post(
           `UPDATE loans SET status = 'repaid', repaid_at = now() WHERE id = $1`,
           [loanId]
         );
+
+        // Send "loan repaid, credit restored" notification (SMS + push)
+        try {
+          // Look up the customer's current credit limit (for the restored-limit copy)
+          const userProfile = await query(
+            'SELECT id, phone_number, full_name FROM users WHERE id = $1',
+            [userId]
+          );
+          const profile = userProfile.rows[0] || {};
+
+          const limitResult = await query(
+            `SELECT COALESCE(MAX(cl.limit_amount), 0) AS credit_limit
+             FROM credit_limits cl
+             JOIN meters m ON m.id = cl.meter_id
+             WHERE m.user_id = $1`,
+            [userId]
+          );
+          const creditLimit = parseFloat(limitResult.rows[0]?.credit_limit ?? 0);
+
+          await sendLoanRepaid(
+            profile.phone_number || req.user.phone,
+            loanId,
+            parseFloat(loan.amount_borrowed),
+            creditLimit,
+            { userId, fullName: profile.full_name },
+          );
+        } catch (notifyErr) {
+          console.warn('[repayments] loan-repaid notify failed:', notifyErr.message);
+        }
       }
 
       res.json({

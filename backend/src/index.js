@@ -14,6 +14,9 @@ import floatRoutes        from './routes/float.js';
 import graduationRoutes   from './routes/graduation.js';
 import repaymentRoutes    from './routes/repayments.js';
 import transactionRoutes  from './routes/transactions.js';
+import countdownRoutes    from './routes/countdown.js';
+import pricingRoutes      from './routes/pricing.js';
+import notificationRoutes from './routes/notifications.js';
 
 const app = express();
 
@@ -41,6 +44,9 @@ app.use('/float',        floatRoutes);          // GET /float/balance, POST /flo
 app.use('/graduation',   graduationRoutes);     // POST /graduation/evaluate, /confirm, /reject, GET /pending, /status/:userId
 app.use('/loans',        loanRoutes);           // POST /loans/borrow (Tier 2 only), GET /loans/:id
 app.use('/repayments',   repaymentRoutes);      // POST /repayments/pay
+app.use('/countdown',    countdownRoutes);      // POST /countdown/process, GET /countdown/overdue
+app.use('/pricing',      pricingRoutes);        // POST /pricing/calculate, GET /pricing/preview, /margin, /settings
+app.use('/notifications', notificationRoutes);  // GET/PUT /templates, POST /preview, /test, GET /log
 
 // ── 404 catch-all ───────────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -87,6 +93,20 @@ if (!isVercel) {
     POST /loans/borrow             (Tier 2 only)
     GET  /loans/:id
     POST /repayments/pay
+    POST /countdown/process           (Cron)
+    GET  /countdown/overdue           (Admin)
+    POST /pricing/calculate           (Pricing)
+    GET  /pricing/preview/:amount     (Pricing)
+    GET  /pricing/preview/:amount/:id (Pricing)
+    GET  /pricing/margin              (Admin)
+    GET  /pricing/settings            (Admin)
+    PUT  /pricing/settings/:key       (Admin)
+    GET  /notifications/templates               (Admin)
+    PUT  /notifications/templates/:key          (Admin)
+    POST /notifications/templates/:key/preview  (Admin)
+    POST /notifications/templates/:key/test     (Admin)
+    GET  /notifications/log                     (Admin)
+    POST /meters/:id/credit-limit               (Admin — raise limit)
     `);
   });
 }

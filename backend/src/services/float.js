@@ -126,6 +126,168 @@ export async function getFloatBalance() {
 }
 
 /**
+ * Reserve units from float inventory (FIFO) without selling.
+ * Creates a float_reservation and per-batch holds.
+ * Units are deducted from units_remaining to prevent double-sell,
+ * but no float_transaction is recorded until confirmFloat().
+ *
+ * @param {number}  units    kWh to reserve
+ * @param {number}  orderId  Trade credit order ID
+ * @returns {Promise<{ success: boolean, reservationId: string|null, units: number, costZmw: number, alert: string|null, error?: string }>}
+ */
+export async function reserveFloat(units, orderId) {
+  // Check total available stock
+  const availResult = await query(
+    `SELECT COALESCE(SUM(units_remaining), 0) AS total
+     FROM float_inventory
+     WHERE units_remaining > 0`
+  );
+  const totalAvailable = parseFloat(availResult.rows[0].total);
+
+  if (totalAvailable < units) {
+    return {
+      success: false,
+      reservationId: null,
+      units: 0,
+      costZmw: 0,
+      alert: totalAvailable < CRITICAL_THRESHOLD ? 'CRITICAL' : totalAvailable < LOW_THRESHOLD ? 'LOW' : null,
+      error: `Insufficient float: need ${units} kWh, only ${totalAvailable} available`,
+    };
+  }
+
+  // Create reservation record
+  const resResult = await query(
+    `INSERT INTO float_reservations (order_id, units_reserved, status)
+     VALUES ($1, $2, 'held')
+     RETURNING id`,
+    [orderId, units]
+  );
+  const reservationId = resResult.rows[0].id;
+
+  // Walk FIFO batches and hold units
+  let remaining = units;
+  let totalCost = 0;
+
+  const batches = await query(
+    `SELECT id, units_remaining, unit_cost_zmw
+     FROM float_inventory
+     WHERE units_remaining > 0
+     ORDER BY purchase_date ASC`
+  );
+
+  for (const batch of batches.rows) {
+    if (remaining <= 0) break;
+
+    const available = parseFloat(batch.units_remaining);
+    const take = Math.min(remaining, available);
+    const costPerUnit = parseFloat(batch.unit_cost_zmw);
+    const batchCost = Math.round(take * costPerUnit * 100) / 100;
+
+    // Deduct from inventory to prevent double-sell
+    await query(
+      `UPDATE float_inventory SET units_remaining = units_remaining - $1 WHERE id = $2`,
+      [take, batch.id]
+    );
+
+    // Record which batches are held
+    await query(
+      `INSERT INTO float_reservation_batches (reservation_id, float_id, units_held, unit_cost_zmw)
+       VALUES ($1, $2, $3, $4)`,
+      [reservationId, batch.id, take, costPerUnit]
+    );
+
+    totalCost += batchCost;
+    remaining -= take;
+  }
+
+  const alert = await getAlertLevel();
+  return { success: true, reservationId, units, costZmw: totalCost, alert };
+}
+
+
+/**
+ * Confirm a reservation — marks as "confirmed" (sold) and records float_transactions.
+ * Called when the customer pays their trade credit order.
+ *
+ * @param {string}      reservationId  UUID of the reservation
+ * @param {string|null} userId         Customer user ID
+ * @param {string}      note           Audit note
+ * @returns {Promise<{ success: boolean, costZmw: number }>}
+ */
+export async function confirmFloat(reservationId, userId, note) {
+  const batchesResult = await query(
+    `SELECT float_id, units_held, unit_cost_zmw
+     FROM float_reservation_batches
+     WHERE reservation_id = $1`,
+    [reservationId]
+  );
+
+  let totalCost = 0;
+
+  for (const rb of batchesResult.rows) {
+    const units = parseFloat(rb.units_held);
+    const cost = Math.round(units * parseFloat(rb.unit_cost_zmw) * 100) / 100;
+
+    // Record the sale transaction (units already deducted during reservation)
+    await query(
+      `INSERT INTO float_transactions (float_id, transaction_type, units, amount_zmw, user_id, note)
+       VALUES ($1, 'sale', $2, $3, $4, $5)`,
+      [rb.float_id, -units, cost, userId, note]
+    );
+
+    totalCost += cost;
+  }
+
+  // Mark reservation as confirmed
+  await query(
+    `UPDATE float_reservations SET status = 'confirmed', resolved_at = now() WHERE id = $1`,
+    [reservationId]
+  );
+
+  return { success: true, costZmw: totalCost };
+}
+
+
+/**
+ * Release a reservation — returns held units back to float inventory.
+ * Called when an order defaults or is cancelled.
+ *
+ * @param {string} reservationId  UUID of the reservation
+ * @returns {Promise<{ success: boolean, unitsReleased: number }>}
+ */
+export async function releaseFloat(reservationId) {
+  const batchesResult = await query(
+    `SELECT float_id, units_held
+     FROM float_reservation_batches
+     WHERE reservation_id = $1`,
+    [reservationId]
+  );
+
+  let totalReleased = 0;
+
+  for (const rb of batchesResult.rows) {
+    const units = parseFloat(rb.units_held);
+
+    // Return units to the batch
+    await query(
+      `UPDATE float_inventory SET units_remaining = units_remaining + $1 WHERE id = $2`,
+      [units, rb.float_id]
+    );
+
+    totalReleased += units;
+  }
+
+  // Mark reservation as released
+  await query(
+    `UPDATE float_reservations SET status = 'released', resolved_at = now() WHERE id = $1`,
+    [reservationId]
+  );
+
+  return { success: true, unitsReleased: totalReleased };
+}
+
+
+/**
  * Get the current alert level based on total remaining units.
  * @returns {Promise<string|null>}
  */
