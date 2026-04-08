@@ -10,6 +10,7 @@ import { validate } from '../middleware/validate.js';
 import * as rules from '../validators/rules.js';
 import { zesco, payments } from '../services/index.js';
 import { deductFloat } from '../services/float.js';
+import { triggerGraduationCheck } from '../services/graduation-trigger.js';
 
 const router = Router();
 
@@ -217,12 +218,24 @@ router.post(
         [userId]
       );
 
+      // 6. Auto-trigger graduation check (fire-and-forget, don't block response)
+      let graduationHint = null;
+      try {
+        const gradResult = await triggerGraduationCheck(userId);
+        if (gradResult && gradResult.decision === 'approved') {
+          graduationHint = 'Congratulations! You may qualify for Tier 2 Loan Credit — pending admin review.';
+        }
+      } catch (gradErr) {
+        console.warn('[trade-credit] graduation check failed (non-blocking):', gradErr.message);
+      }
+
       res.json({
         message: 'Payment received — trade credit order settled',
         order_id:          orderId,
         amount_paid:       amount,
         payment_method:    method,
         payment_reference: paymentResult.reference,
+        ...(graduationHint && { graduation_hint: graduationHint }),
         ...(paymentResult.mock && { mock: true }),
       });
     } catch (err) {

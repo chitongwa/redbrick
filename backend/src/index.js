@@ -11,6 +11,7 @@ import creditRoutes       from './routes/credit.js';
 import loanRoutes         from './routes/loans.js';
 import tradeCreditRoutes  from './routes/trade-credit.js';
 import floatRoutes        from './routes/float.js';
+import graduationRoutes   from './routes/graduation.js';
 import repaymentRoutes    from './routes/repayments.js';
 import transactionRoutes  from './routes/transactions.js';
 
@@ -37,6 +38,7 @@ app.use('/meters',       creditRoutes);         // GET  /meters/:id/credit-limit
 app.use('/meters',       transactionRoutes);    // GET  /meters/:id/transactions
 app.use('/trade-credit', tradeCreditRoutes);    // POST /trade-credit/purchase, /trade-credit/pay, GET /trade-credit/orders
 app.use('/float',        floatRoutes);          // GET /float/balance, POST /float/purchase, GET /float/inventory, GET /float/transactions
+app.use('/graduation',   graduationRoutes);     // POST /graduation/evaluate, /confirm, /reject, GET /pending, /status/:userId
 app.use('/loans',        loanRoutes);           // POST /loans/borrow (Tier 2 only), GET /loans/:id
 app.use('/repayments',   repaymentRoutes);      // POST /repayments/pay
 
@@ -77,6 +79,11 @@ if (!isVercel) {
     POST /float/purchase           (Float mgmt)
     GET  /float/inventory          (Float mgmt)
     GET  /float/transactions       (Float mgmt)
+    POST /graduation/evaluate      (Graduation)
+    POST /graduation/confirm       (Admin)
+    POST /graduation/reject        (Admin)
+    GET  /graduation/pending       (Admin)
+    GET  /graduation/status/:userId
     POST /loans/borrow             (Tier 2 only)
     GET  /loans/:id
     POST /repayments/pay

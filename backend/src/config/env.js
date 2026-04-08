@@ -28,6 +28,7 @@ const env = {
     apiUrl:         process.env.AIRTEL_MONEY_API_URL,
     apiKey:         process.env.AIRTEL_MONEY_API_KEY,
   },
+  scoringEngineUrl: process.env.SCORING_ENGINE_URL || 'http://localhost:8001',
 };
 
 export default env;

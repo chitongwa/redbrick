@@ -130,6 +130,90 @@ function mockQuery(text, params) {
     return Promise.resolve({ rows: [{ total: 1 }] });
   }
 
+  // ── Graduation queries ───────────────────────────────────────────────────
+
+  // Graduation pending insert/upsert
+  if (sql.includes('insert into graduation_pending')) {
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-grad-1',
+        user_id: params[0],
+        decision: params[1],
+        initial_credit_limit: params[2],
+        status: 'pending',
+        evaluated_at: new Date().toISOString(),
+      }],
+    });
+  }
+
+  // Graduation pending lookup by id
+  if (sql.includes('from graduation_pending') && sql.includes('where') && sql.includes('id =')) {
+    return Promise.resolve({
+      rows: [{
+        id: params[0],
+        user_id: 'mock-user-5678',
+        decision: 'approved',
+        initial_credit_limit: 75,
+        criteria_snapshot: '{}',
+        reasons: '[]',
+        status: 'pending',
+        evaluated_at: new Date().toISOString(),
+        confirmed_at: null,
+        rejected_at: null,
+        rejection_reason: null,
+      }],
+    });
+  }
+
+  // Graduation pending — check existing pending for user
+  if (sql.includes('from graduation_pending') && sql.includes('user_id') && sql.includes('pending')) {
+    return Promise.resolve({ rows: [] }); // No existing pending
+  }
+
+  // Graduation pending update (confirm/reject)
+  if (sql.includes('update graduation_pending')) {
+    return Promise.resolve({ rows: [], rowCount: 1 });
+  }
+
+  // Graduation pending list (admin view with JOIN)
+  if (sql.includes('from graduation_pending') && sql.includes('join')) {
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-grad-1',
+        user_id: 'mock-user-5678',
+        decision: 'approved',
+        initial_credit_limit: 75,
+        status: 'pending',
+        evaluated_at: new Date().toISOString(),
+        full_name: 'Mock User',
+        phone_number: '+260912345678',
+        trade_credit_transactions: 8,
+      }],
+    });
+  }
+
+  // Graduation history for user (status endpoint)
+  if (sql.includes('from graduation_pending') && sql.includes('order by') && sql.includes('limit')) {
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-grad-1',
+        decision: 'approved',
+        initial_credit_limit: 75,
+        criteria_snapshot: '{}',
+        reasons: '[]',
+        status: 'pending',
+        evaluated_at: new Date().toISOString(),
+      }],
+    });
+  }
+
+  // Credit limit insert (for graduation confirm)
+  if (sql.includes('insert into credit_limits')) {
+    return Promise.resolve({
+      rows: [{ id: 'mock-cl-1' }],
+    });
+  }
+
   // ── Float inventory queries ──────────────────────────────────────────────
 
   // Float inventory insert (bulk purchase)
