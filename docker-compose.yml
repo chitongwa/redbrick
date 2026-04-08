@@ -1,0 +1,104 @@
+###############################################################################
+# RedBrick — Local Development Stack
+#
+# Usage:
+#   cp .env.example .env          # fill in secrets
+#   docker compose up --build     # start all services
+#
+# Services:
+#   db          PostgreSQL 16       → localhost:5432
+#   backend     Node.js Express API → localhost:3000
+#   scoring     Python FastAPI      → localhost:5000
+#   dashboard   React Vite dev      → localhost:8080
+###############################################################################
+
+services:
+  # ── PostgreSQL 16 ─────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-redbrick}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-redbrick}
+      POSTGRES_DB: ${POSTGRES_DB:-redbrick}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/seeds/001_sample_data.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-redbrick}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Node.js Backend API ───────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      USE_MOCKS: ${USE_MOCKS:-true}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-redbrick}:${POSTGRES_PASSWORD:-redbrick}@db:5432/${POSTGRES_DB:-redbrick}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      OTP_EXPIRY_SECONDS: ${OTP_EXPIRY_SECONDS:-300}
+      SCORING_ENGINE_URL: http://scoring:5000
+      # Twilio
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
+      # ZESCO
+      ZESCO_API_URL: ${ZESCO_API_URL:-}
+      ZESCO_API_KEY: ${ZESCO_API_KEY:-}
+      # MTN MoMo
+      MTN_MOMO_API_URL: ${MTN_MOMO_API_URL:-}
+      MTN_MOMO_API_KEY: ${MTN_MOMO_API_KEY:-}
+      # Airtel Money
+      AIRTEL_MONEY_API_URL: ${AIRTEL_MONEY_API_URL:-}
+      AIRTEL_MONEY_API_KEY: ${AIRTEL_MONEY_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/src
+          target: /app/src
+
+  # ── Python Scoring Engine ─────────────────────────────────────────────────
+  scoring:
+    build: ./scoring
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      SCORING_PORT: 5000
+    develop:
+      watch:
+        - action: sync
+          path: ./scoring/src
+          target: /app/src
+
+  # ── React Dashboard (Vite dev server) ─────────────────────────────────────
+  dashboard:
+    build: ./dashboard
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_SCORING_URL: http://localhost:5000
+    depends_on:
+      - backend
+    develop:
+      watch:
+        - action: sync
+          path: ./dashboard/src
+          target: /app/src
+
+volumes:
+  pgdata:

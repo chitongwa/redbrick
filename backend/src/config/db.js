@@ -1,0 +1,194 @@
+// ── PostgreSQL connection pool ──
+
+import pg from 'pg';
+import env from './env.js';
+
+let pool;
+
+// Only create a real pool if we have a DATABASE_URL and mocks are off,
+// or if DATABASE_URL actually points to a running server.
+// In serverless mock mode (Vercel) we skip the pool entirely.
+if (!env.useMocks) {
+  pool = new pg.Pool({ connectionString: env.databaseUrl });
+  pool.on('error', (err) => {
+    console.error('[db] Unexpected pool error:', err.message);
+  });
+}
+
+/**
+ * Run a parameterised query.
+ * In mock mode returns a fake result based on the query.
+ * @param {string}  text   SQL with $1, $2… placeholders
+ * @param {any[]}   params Bind values
+ * @returns {Promise<pg.QueryResult>}
+ */
+export function query(text, params) {
+  if (env.useMocks) {
+    return mockQuery(text, params);
+  }
+  return pool.query(text, params);
+}
+
+/**
+ * Mock query handler — returns plausible rows for known queries.
+ */
+function mockQuery(text, params) {
+  const sql = text.toLowerCase();
+
+  // User upsert (auth flow)
+  if (sql.includes('insert into users')) {
+    const phone = params[0];
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-user-' + phone.slice(-4),
+        phone_number: phone,
+        full_name: params[1] || phone,
+        kyc_status: 'verified',
+      }],
+    });
+  }
+
+  // Meter existence check by meter_number (POST /meters/add duplicate check)
+  // Matches: WHERE meter_number = $1 (not WHERE id = $1)
+  if (sql.includes('from meters') && sql.includes('where meter_number')) {
+    // Return empty — meter doesn't exist yet in mock, so add always succeeds
+    return Promise.resolve({ rows: [] });
+  }
+
+  // Meter ownership lookup by id (SELECT ... FROM meters WHERE id = $1)
+  // Returns a mock meter that passes ownership checks for any user.
+  if (sql.includes('from meters') && sql.includes('where')) {
+    return Promise.resolve({
+      rows: [{
+        id: params[0],
+        meter_number: String(params[0]),
+        user_id: '__mock_any__',
+        zesco_verified: true,
+      }],
+    });
+  }
+
+  // Meter insert
+  if (sql.includes('insert into meters')) {
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-meter-1',
+        user_id: params[0],
+        meter_number: params[1],
+        zesco_verified: true,
+      }],
+    });
+  }
+
+  // Credit limit lookup
+  if (sql.includes('credit_limits')) {
+    return Promise.resolve({
+      rows: [{
+        limit_amount: 250,
+        calculated_at: new Date().toISOString(),
+      }],
+    });
+  }
+
+  // Loans outstanding sum
+  if (sql.includes('sum') && sql.includes('loans')) {
+    return Promise.resolve({
+      rows: [{ total_outstanding: 0 }],
+    });
+  }
+
+  // Loan insert
+  if (sql.includes('insert into loans')) {
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-loan-1',
+        meter_id: params[0],
+        amount_borrowed: params[1],
+        token_delivered: params[2],
+        status: 'active',
+        due_date: params[3],
+        created_at: new Date().toISOString(),
+      }],
+    });
+  }
+
+  // Loan lookup (includes JOIN with meters for ownership)
+  if (sql.includes('from loans') && sql.includes('where')) {
+    return Promise.resolve({
+      rows: [{
+        id: params[0],
+        meter_id: 'mock-meter-1',
+        meter_number: '12345678',
+        user_id: '__mock_any__',
+        amount_borrowed: 100,
+        token_delivered: '5738 2041 9637 1084 2956',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        due_date: new Date(Date.now() + 30 * 86400000).toISOString(),
+        repaid_at: null,
+      }],
+    });
+  }
+
+  // Transactions
+  if (sql.includes('from transactions')) {
+    return Promise.resolve({
+      rows: [
+        { id: 't1', meter_id: 'mock-meter-1', amount_zmw: 150, units_purchased: 60, purchased_at: '2026-03-15T10:00:00Z', source: 'zesco_history' },
+        { id: 't2', meter_id: 'mock-meter-1', amount_zmw: 200, units_purchased: 80, purchased_at: '2026-02-12T14:30:00Z', source: 'zesco_history' },
+        { id: 't3', meter_id: 'mock-meter-1', amount_zmw: 100, units_purchased: 40, purchased_at: '2026-01-20T09:15:00Z', source: 'redbrick' },
+      ],
+    });
+  }
+
+  // Transaction count
+  if (sql.includes('count') && sql.includes('transactions')) {
+    return Promise.resolve({
+      rows: [{ total: 3 }],
+    });
+  }
+
+  // Repayment sum (for remaining balance calc)
+  if (sql.includes('sum') && sql.includes('repayments')) {
+    return Promise.resolve({
+      rows: [{ total: 0 }],
+    });
+  }
+
+  // Loan update (status change)
+  if (sql.includes('update loans')) {
+    return Promise.resolve({ rows: [], rowCount: 1 });
+  }
+
+  // Transaction insert
+  if (sql.includes('insert into transactions')) {
+    return Promise.resolve({
+      rows: [{ id: 'mock-tx-1' }],
+    });
+  }
+
+  // Max limit subquery (for borrow flow)
+  if (sql.includes('max_limit') || (sql.includes('coalesce') && sql.includes('credit_limits'))) {
+    return Promise.resolve({
+      rows: [{ max_limit: 250 }],
+    });
+  }
+
+  // Repayment insert
+  if (sql.includes('insert into repayments')) {
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-repayment-1',
+        loan_id: params[0],
+        amount_paid: params[1],
+        payment_method: params[2],
+        paid_at: new Date().toISOString(),
+      }],
+    });
+  }
+
+  // Default fallback
+  return Promise.resolve({ rows: [] });
+}
+
+export default pool;

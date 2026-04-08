@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'config/theme.dart';
+import 'config/router.dart';
 
 void main() {
-  runApp(const RedBrickApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const ProviderScope(child: RedBrickApp()));
 }
 
 class RedBrickApp extends StatelessWidget {
@@ -9,25 +13,11 @@ class RedBrickApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'RedBrick',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E3A5F),
-          primary: const Color(0xFF1E3A5F),
-          secondary: const Color(0xFFE8533A),
-        ),
-        useMaterial3: true,
-      ),
-      home: const Scaffold(
-        body: Center(
-          child: Text(
-            'RedBrick',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
+      theme: appTheme(),
+      routerConfig: appRouter,
     );
   }
 }
