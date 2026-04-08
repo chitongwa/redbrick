@@ -8,6 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import * as rules from '../validators/rules.js';
 import { zesco } from '../services/index.js';
+import { deductFloat } from '../services/float.js';
 
 const router = Router();
 
@@ -97,6 +98,22 @@ router.post(
         return res.status(400).json({ error: 'Minimum borrow amount is ZMW 20' });
       }
 
+      // Deduct from float inventory (FIFO) — all token deliveries use same float
+      const unitsNeeded = amount / 2.5;  // ZMW to kWh conversion
+      const floatResult = await deductFloat(
+        unitsNeeded,
+        userId,
+        `Loan borrow — meter ${meter.rows[0].meter_number}`
+      );
+
+      if (!floatResult.success) {
+        return res.status(503).json({
+          error: 'Insufficient float inventory to fulfil this loan',
+          detail: floatResult.error,
+          float_alert: floatResult.alert,
+        });
+      }
+
       // Purchase tokens from ZESCO
       const purchase = zesco.purchaseTokens(meter.rows[0].meter_number, amount);
 
@@ -127,6 +144,7 @@ router.post(
           units_kwh: purchase.units_kwh,
         },
         ...(purchase.mock && { mock: true }),
+        ...(floatResult.alert && { float_alert: floatResult.alert }),
       });
     } catch (err) {
       console.error('[loans] borrow error:', err);

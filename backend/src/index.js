@@ -10,6 +10,7 @@ import meterRoutes        from './routes/meters.js';
 import creditRoutes       from './routes/credit.js';
 import loanRoutes         from './routes/loans.js';
 import tradeCreditRoutes  from './routes/trade-credit.js';
+import floatRoutes        from './routes/float.js';
 import repaymentRoutes    from './routes/repayments.js';
 import transactionRoutes  from './routes/transactions.js';
 
@@ -35,6 +36,7 @@ app.use('/meters',       meterRoutes);          // POST /meters/add, GET /meters
 app.use('/meters',       creditRoutes);         // GET  /meters/:id/credit-limit
 app.use('/meters',       transactionRoutes);    // GET  /meters/:id/transactions
 app.use('/trade-credit', tradeCreditRoutes);    // POST /trade-credit/purchase, /trade-credit/pay, GET /trade-credit/orders
+app.use('/float',        floatRoutes);          // GET /float/balance, POST /float/purchase, GET /float/inventory, GET /float/transactions
 app.use('/loans',        loanRoutes);           // POST /loans/borrow (Tier 2 only), GET /loans/:id
 app.use('/repayments',   repaymentRoutes);      // POST /repayments/pay
 
@@ -71,6 +73,10 @@ if (!isVercel) {
     POST /trade-credit/purchase    (Tier 1)
     POST /trade-credit/pay         (Tier 1)
     GET  /trade-credit/orders      (Tier 1)
+    GET  /float/balance            (Float mgmt)
+    POST /float/purchase           (Float mgmt)
+    GET  /float/inventory          (Float mgmt)
+    GET  /float/transactions       (Float mgmt)
     POST /loans/borrow             (Tier 2 only)
     GET  /loans/:id
     POST /repayments/pay

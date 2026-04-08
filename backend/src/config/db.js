@@ -130,6 +130,91 @@ function mockQuery(text, params) {
     return Promise.resolve({ rows: [{ total: 1 }] });
   }
 
+  // ── Float inventory queries ──────────────────────────────────────────────
+
+  // Float inventory insert (bulk purchase)
+  if (sql.includes('insert into float_inventory')) {
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-float-1',
+        purchase_date: params[0],
+        units_purchased: params[1],
+        amount_paid_zmw: params[2],
+        unit_cost_zmw: params[3],
+        units_remaining: params[4],
+        purchase_reference: params[5],
+        created_at: new Date().toISOString(),
+      }],
+    });
+  }
+
+  // Float inventory FIFO query (oldest batches with remaining stock)
+  if (sql.includes('from float_inventory') && sql.includes('units_remaining > 0') && sql.includes('order by')) {
+    return Promise.resolve({
+      rows: [
+        { id: 'mock-float-1', units_remaining: 8000, unit_cost_zmw: 2.50 },
+        { id: 'mock-float-2', units_remaining: 5000, unit_cost_zmw: 2.55 },
+      ],
+    });
+  }
+
+  // Float inventory update (deduct units)
+  if (sql.includes('update float_inventory') && sql.includes('units_remaining')) {
+    return Promise.resolve({ rows: [], rowCount: 1 });
+  }
+
+  // Float balance aggregate (SUM of remaining units + value)
+  if (sql.includes('sum') && sql.includes('float_inventory') && sql.includes('units_remaining')) {
+    return Promise.resolve({
+      rows: [{ total_units: 13000, total_value_zmw: 32825, total: 13000 }],
+    });
+  }
+
+  // Float inventory list
+  if (sql.includes('from float_inventory') && sql.includes('order by')) {
+    return Promise.resolve({
+      rows: [
+        { id: 'f1', purchase_date: '2026-04-01T08:00:00Z', units_purchased: 10000, amount_paid_zmw: 25000, unit_cost_zmw: 2.50, units_remaining: 8000, purchase_reference: 'ZESCO-INV-2026-042', created_at: '2026-04-01T08:00:00Z' },
+        { id: 'f2', purchase_date: '2026-03-15T10:00:00Z', units_purchased: 8000,  amount_paid_zmw: 20400, unit_cost_zmw: 2.55, units_remaining: 5000, purchase_reference: 'ZESCO-INV-2026-035', created_at: '2026-03-15T10:00:00Z' },
+      ],
+    });
+  }
+
+  // Float inventory count
+  if (sql.includes('count') && sql.includes('float_inventory')) {
+    return Promise.resolve({ rows: [{ total: 2 }] });
+  }
+
+  // Float transaction insert
+  if (sql.includes('insert into float_transactions')) {
+    return Promise.resolve({
+      rows: [{ id: 'mock-ft-1' }],
+    });
+  }
+
+  // Float transactions — 30-day sales total
+  if (sql.includes('sum') && sql.includes('float_transactions') && sql.includes('sale')) {
+    return Promise.resolve({
+      rows: [{ total_sold: 4200 }],
+    });
+  }
+
+  // Float transactions list
+  if (sql.includes('from float_transactions') && sql.includes('order by')) {
+    return Promise.resolve({
+      rows: [
+        { id: 'ft1', float_id: 'f1', transaction_type: 'sale',     units: -40, amount_zmw: 100, user_id: 'mock-user-1', note: 'Trade credit order #1', created_at: '2026-04-07T14:30:00Z' },
+        { id: 'ft2', float_id: 'f1', transaction_type: 'sale',     units: -80, amount_zmw: 200, user_id: 'mock-user-5', note: 'Loan borrow #9',        created_at: '2026-04-06T09:15:00Z' },
+        { id: 'ft3', float_id: 'f1', transaction_type: 'purchase', units: 10000, amount_zmw: 25000, user_id: null,       note: 'Bulk ZESCO purchase',   created_at: '2026-04-01T08:00:00Z' },
+      ],
+    });
+  }
+
+  // Float transactions count
+  if (sql.includes('count') && sql.includes('float_transactions')) {
+    return Promise.resolve({ rows: [{ total: 3 }] });
+  }
+
   // Meter existence check by meter_number (POST /meters/add duplicate check)
   // Matches: WHERE meter_number = $1 (not WHERE id = $1)
   if (sql.includes('from meters') && sql.includes('where meter_number')) {

@@ -9,6 +9,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import * as rules from '../validators/rules.js';
 import { zesco, payments } from '../services/index.js';
+import { deductFloat } from '../services/float.js';
 
 const router = Router();
 
@@ -75,7 +76,22 @@ router.post(
         return res.status(400).json({ error: 'Minimum purchase amount is ZMW 10' });
       }
 
-      // 4. Purchase tokens from ZESCO (delivered immediately)
+      // 4. Deduct from float inventory (FIFO) and purchase tokens
+      const unitsNeeded = electricityAmt / 2.5;  // ZMW to kWh conversion
+      const floatResult = await deductFloat(
+        unitsNeeded,
+        userId,
+        `Trade credit purchase — meter ${meter.rows[0].meter_number}`
+      );
+
+      if (!floatResult.success) {
+        return res.status(503).json({
+          error: 'Insufficient float inventory to fulfil this order',
+          detail: floatResult.error,
+          float_alert: floatResult.alert,
+        });
+      }
+
       const purchase = zesco.purchaseTokens(meter.rows[0].meter_number, electricityAmt);
 
       // 5. Calculate payment deadline (48 hours from now)
@@ -117,6 +133,7 @@ router.post(
           accepted_methods: ['mtn', 'airtel'],
         },
         ...(purchase.mock && { mock: true }),
+        ...(floatResult.alert && { float_alert: floatResult.alert }),
       });
     } catch (err) {
       console.error('[trade-credit] purchase error:', err);
