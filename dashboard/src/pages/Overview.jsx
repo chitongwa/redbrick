@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  PieChart, Pie, LineChart, Line, Legend,
+} from 'recharts';
 import StatCard from '../components/StatCard';
 import { users, loans, transactions } from '../data/mock';
 
@@ -62,6 +65,45 @@ function useOverviewStats() {
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .slice(0, 5);
 
+    // ── Portfolio Health stats ──────────────────────────────────────────────
+
+    // 9. Loan status breakdown for donut chart
+    const statusBreakdown = [
+      { name: 'Repaid',    value: repaid,                                            fill: '#22c55e' },
+      { name: 'Active',    value: activeLoans,                                       fill: '#3b82f6' },
+      { name: 'Overdue',   value: overdueLoans,                                      fill: '#f97316' },
+      { name: 'Defaulted', value: loans.filter(l => l.status === 'defaulted').length, fill: '#ef4444' },
+    ];
+
+    // 10. Cumulative repayments over last 6 months
+    const repaidLoans = loans.filter(l => l.status === 'repaid' && l.repaid_at);
+    const cumulativeRepayments = [];
+    let cumulative = 0;
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = d.toISOString().slice(0, 7);
+      const label = d.toLocaleDateString('en-ZM', { month: 'short', year: '2-digit' });
+      const monthTotal = repaidLoans
+        .filter(l => l.repaid_at.startsWith(key))
+        .reduce((sum, l) => sum + l.amount, 0);
+      cumulative += monthTotal;
+      cumulativeRepayments.push({ month: label, cumulative, monthAmount: monthTotal });
+    }
+
+    // 11. Default rate
+    const defaulted = loans.filter(l => l.status === 'defaulted').length;
+    const defaultRate = matured > 0 ? +((defaulted / matured) * 100).toFixed(1) : 0;
+
+    // 12. Average days to repayment (for repaid loans)
+    const daysToRepay = repaidLoans.map(l => {
+      const start = new Date(l.created_at);
+      const end   = new Date(l.repaid_at);
+      return Math.round((end - start) / (1000 * 60 * 60 * 24));
+    });
+    const avgDaysToRepay = daysToRepay.length > 0
+      ? Math.round(daysToRepay.reduce((a, b) => a + b, 0) / daysToRepay.length)
+      : 0;
+
     return {
       totalUsers,
       activeLoans,
@@ -71,6 +113,10 @@ function useOverviewStats() {
       avgCreditLimit,
       monthlyDisbursements,
       recentLoans,
+      statusBreakdown,
+      cumulativeRepayments,
+      defaultRate,
+      avgDaysToRepay,
     };
   }, []);
 }
@@ -164,6 +210,165 @@ export default function Overview() {
           Total across last 6 months: ZMW{' '}
           {s.monthlyDisbursements.reduce((sum, m) => sum + m.amount, 0).toLocaleString()}
         </p>
+      </div>
+
+      {/* ── Portfolio Health ─────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold text-navy-700">Portfolio Health</h2>
+          <span className="text-[10px] uppercase tracking-widest text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            Board Review
+          </span>
+        </div>
+
+        {/* Top row: Donut + Line chart */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* Donut chart — Loan status breakdown */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h3 className="text-sm font-semibold text-navy-700 mb-1">Loan Status Breakdown</h3>
+            <p className="text-xs text-gray-400 mb-4">Distribution across all {loans.length} loans</p>
+            <div className="h-56 flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={s.statusBreakdown}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {s.statusBreakdown.map((entry, idx) => (
+                      <Cell key={idx} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: '8px',
+                      border: '1px solid #e5e7eb',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                      fontSize: '13px',
+                    }}
+                    formatter={(value, name) => [`${value} loan${value !== 1 ? 's' : ''}`, name]}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    iconType="circle"
+                    iconSize={8}
+                    formatter={(value) => <span className="text-xs text-gray-600">{value}</span>}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Line chart — Cumulative repayments */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h3 className="text-sm font-semibold text-navy-700 mb-1">Cumulative Repayments</h3>
+            <p className="text-xs text-gray-400 mb-4">
+              Total recovered: ZMW {s.cumulativeRepayments.at(-1)?.cumulative.toLocaleString() || 0}
+            </p>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={s.cumulativeRepayments} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 12, fill: '#6b7280' }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12, fill: '#6b7280' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => `${v.toLocaleString()}`}
+                    width={55}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: '8px',
+                      border: '1px solid #e5e7eb',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                      fontSize: '13px',
+                    }}
+                    formatter={(value, name) => [
+                      `ZMW ${value.toLocaleString()}`,
+                      name === 'cumulative' ? 'Cumulative' : 'This Month',
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cumulative"
+                    stroke="#22c55e"
+                    strokeWidth={2.5}
+                    dot={{ fill: '#22c55e', r: 4, strokeWidth: 0 }}
+                    activeDot={{ r: 6 }}
+                    name="cumulative"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="monthAmount"
+                    stroke="#3b82f6"
+                    strokeWidth={1.5}
+                    strokeDasharray="5 5"
+                    dot={{ fill: '#3b82f6', r: 3, strokeWidth: 0 }}
+                    name="monthAmount"
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    iconType="line"
+                    formatter={(value) => (
+                      <span className="text-xs text-gray-600">
+                        {value === 'cumulative' ? 'Cumulative' : 'Monthly'}
+                      </span>
+                    )}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom row: Default rate + Avg days to repayment */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Default Rate</p>
+            <p className={`text-3xl font-bold mt-1 ${s.defaultRate > 5 ? 'text-red-600' : 'text-green-600'}`}>
+              {s.defaultRate}%
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {s.defaultRate > 5
+                ? 'Above 5% threshold — review collection strategy'
+                : 'Within acceptable range (< 5%)'}
+            </p>
+            <div className="mt-3 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${s.defaultRate > 5 ? 'bg-red-500' : 'bg-green-500'}`}
+                style={{ width: `${Math.min(s.defaultRate, 100)}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-5">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Avg Days to Repayment</p>
+            <p className="text-3xl font-bold mt-1 text-navy-700">
+              {s.avgDaysToRepay} <span className="text-base font-medium text-gray-400">days</span>
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Average across {loans.filter(l => l.status === 'repaid').length} repaid loans
+            </p>
+            <div className="mt-3 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all"
+                style={{ width: `${Math.min((s.avgDaysToRepay / 30) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Recent loans table */}
