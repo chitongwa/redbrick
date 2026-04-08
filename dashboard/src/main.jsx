@@ -12,6 +12,10 @@ import Users from './pages/Users';
 import Loans from './pages/Loans';
 import Scoring from './pages/Scoring';
 import Settings from './pages/Settings';
+import TradeCredit from './pages/TradeCredit';
+import Graduation from './pages/Graduation';
+import Float from './pages/Float';
+import Analytics from './pages/Analytics';
 
 function LoginGate() {
   const token = localStorage.getItem('rb_admin_token');
@@ -34,8 +38,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         >
           <Route path="/overview" element={<Overview />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/trade-credit" element={<TradeCredit />} />
+          <Route path="/graduation" element={<Graduation />} />
           <Route path="/loans" element={<Loans />} />
+          <Route path="/float" element={<Float />} />
           <Route path="/scoring" element={<Scoring />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

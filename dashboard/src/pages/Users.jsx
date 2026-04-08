@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import { users, loans, transactions } from '../data/mock';
+import { users, loans, transactions, tradeCreditOrders, loanBalances } from '../data/mock';
 import { zmw } from '../utils/fmt';
 
 export default function Users() {
   const [search, setSearch] = useState('');
   const [kycFilter, setKycFilter] = useState('all');
+  const [tierFilter, setTierFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState(null);
 
   // Pre-compute totals per user
@@ -18,13 +19,36 @@ export default function Users() {
     return map;
   }, []);
 
+  // Pre-compute avg payment time per user from trade credit orders
+  const paymentStats = useMemo(() => {
+    const map = {};
+    for (const u of users) {
+      const userOrders = tradeCreditOrders.filter(o => o.user_id === u.id && o.status === 'paid' && o.paid_at);
+      if (userOrders.length === 0) {
+        map[u.id] = { avgHours: null, count: 0 };
+        continue;
+      }
+      const totalHours = userOrders.reduce((sum, o) => {
+        const created = new Date(o.created_at);
+        const paid    = new Date(o.paid_at);
+        return sum + (paid - created) / 3600000;
+      }, 0);
+      map[u.id] = {
+        avgHours: +(totalHours / userOrders.length).toFixed(1),
+        count: userOrders.length,
+      };
+    }
+    return map;
+  }, []);
+
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
     const matchSearch =
       u.full_name.toLowerCase().includes(q) ||
       u.phone_number.replace(/\s/g, '').includes(q.replace(/\s/g, ''));
-    const matchKyc = kycFilter === 'all' || u.kyc_status === kycFilter;
-    return matchSearch && matchKyc;
+    const matchKyc  = kycFilter === 'all'  || u.kyc_status === kycFilter;
+    const matchTier = tierFilter === 'all' || u.tier === tierFilter;
+    return matchSearch && matchKyc && matchTier;
   });
 
   return (
@@ -40,6 +64,15 @@ export default function Users() {
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brick-500 focus:border-transparent outline-none text-sm"
         />
+        <select
+          value={tierFilter}
+          onChange={(e) => setTierFilter(e.target.value)}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brick-500 outline-none"
+        >
+          <option value="all">All Tiers</option>
+          <option value="trade_credit">Tier 1 — Trade Credit</option>
+          <option value="loan_credit">Tier 2 — Credit Member</option>
+        </select>
         <select
           value={kycFilter}
           onChange={(e) => setKycFilter(e.target.value)}
@@ -58,40 +91,71 @@ export default function Users() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
               <tr>
-                <th className="px-5 py-3 text-left">Name</th>
-                <th className="px-5 py-3 text-left">Phone</th>
-                <th className="px-5 py-3 text-left">Tier</th>
-                <th className="px-5 py-3 text-right">Meters</th>
-                <th className="px-5 py-3 text-left">KYC</th>
-                <th className="px-5 py-3 text-left">Registered</th>
-                <th className="px-5 py-3 text-right">Total Borrowed</th>
-                <th className="px-5 py-3"></th>
+                <th className="px-4 py-3 text-left">Name</th>
+                <th className="px-4 py-3 text-left">Tier</th>
+                <th className="px-4 py-3 text-left">KYC</th>
+                <th className="px-4 py-3 text-right">Trade Credits</th>
+                <th className="px-4 py-3 text-right">Defaults</th>
+                <th className="px-4 py-3 text-right">Avg Pay Time</th>
+                <th className="px-4 py-3 text-left">Graduation / Credit</th>
+                <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map((u) => (
-                <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-3 font-medium text-navy-700">{u.full_name}</td>
-                  <td className="px-5 py-3 text-gray-500">{u.phone_number}</td>
-                  <td className="px-5 py-3"><TierBadge tier={u.tier} /></td>
-                  <td className="px-5 py-3 text-right">{u.meters}</td>
-                  <td className="px-5 py-3">
-                    <KycBadge status={u.kyc_status} />
-                  </td>
-                  <td className="px-5 py-3 text-gray-400">{u.created_at}</td>
-                  <td className="px-5 py-3 text-right font-semibold text-navy-700">
-                    {userTotals[u.id] > 0 ? zmw(userTotals[u.id]) : '—'}
-                  </td>
-                  <td className="px-5 py-3">
-                    <button
-                      onClick={() => setSelectedUser(u)}
-                      className="text-xs text-brick-500 hover:text-brick-600 font-semibold whitespace-nowrap"
-                    >
-                      View Profile
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((u) => {
+                const isTier2 = u.tier === 'loan_credit';
+                const pay = paymentStats[u.id] || { avgHours: null, count: 0 };
+                const bal = loanBalances[u.id] || { credit_limit: 0, outstanding: 0 };
+                return (
+                  <tr key={u.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-navy-700">{u.full_name}</div>
+                      <div className="text-xs text-gray-400">{u.phone_number}</div>
+                    </td>
+                    <td className="px-4 py-3"><TierBadge tier={u.tier} /></td>
+                    <td className="px-4 py-3"><KycBadge status={u.kyc_status} /></td>
+                    <td className="px-4 py-3 text-right font-semibold text-navy-700">
+                      {u.trade_credit_transactions}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={u.trade_credit_default_count > 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                        {u.trade_credit_default_count}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-600">
+                      {pay.avgHours !== null ? `${pay.avgHours}h` : '—'}
+                    </td>
+                    <td className="px-4 py-3 min-w-[180px]">
+                      {isTier2 ? (
+                        <div>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="text-gray-500">Outstanding</span>
+                            <span className="font-semibold text-navy-700">
+                              {zmw(bal.outstanding)} / {zmw(bal.credit_limit)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-navy-500"
+                              style={{ width: `${Math.min((bal.outstanding / Math.max(bal.credit_limit, 1)) * 100, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <GraduationProgress count={u.trade_credit_transactions} defaults={u.trade_credit_default_count} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => setSelectedUser(u)}
+                        className="text-xs text-brick-500 hover:text-brick-600 font-semibold whitespace-nowrap"
+                      >
+                        View Profile
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-5 py-8 text-center text-gray-400">
@@ -301,5 +365,36 @@ function TierBadge({ tier }) {
       <span className={`w-1.5 h-1.5 rounded-full ${isLoan ? 'bg-navy-500' : 'bg-orange-500'}`} />
       {isLoan ? 'Tier 2 — Loan' : 'Tier 1 — Trade'}
     </span>
+  );
+}
+
+function GraduationProgress({ count, defaults }) {
+  const target = 6;
+  const pct = Math.min((count / target) * 100, 100);
+  const eligible = count >= target && defaults === 0;
+  const color = eligible ? 'bg-green-500' : defaults > 0 ? 'bg-red-400' : 'bg-orange-400';
+
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-0.5">
+        <span className="text-gray-500">Graduation</span>
+        <span className={`font-semibold ${eligible ? 'text-green-600' : 'text-navy-700'}`}>
+          {count} / {target}
+          {eligible && ' ✓'}
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${color}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {eligible && (
+        <div className="text-[10px] text-green-600 font-semibold mt-0.5">Ready to graduate</div>
+      )}
+      {defaults > 0 && (
+        <div className="text-[10px] text-red-500 mt-0.5">{defaults} default(s) blocking</div>
+      )}
+    </div>
   );
 }

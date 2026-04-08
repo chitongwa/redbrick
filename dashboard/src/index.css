@@ -23,3 +23,79 @@
   border-radius: 50%;
   animation: spin-ring 0.8s linear infinite;
 }
+
+/* ── Print stylesheet (for PDF export via window.print) ──────────────── */
+@media print {
+  /* Letter-size margins, clean body background */
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  html, body {
+    background: white !important;
+    color: #0f172a !important;
+    font-size: 11pt;
+  }
+
+  /* Hide chrome: sidebar, nav, buttons — anything not marked print:block */
+  aside,
+  nav,
+  header,
+  .no-print,
+  button,
+  .fixed {
+    display: none !important;
+  }
+
+  /* Neutralise shadows and backgrounds so ink output looks clean */
+  .shadow-sm, .shadow, .shadow-lg, .shadow-xl, .shadow-2xl {
+    box-shadow: none !important;
+  }
+
+  .bg-gray-50, .bg-gray-100 {
+    background: #ffffff !important;
+  }
+
+  /* Force a single column and full width for the main content */
+  main, .print-root {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Stat cards keep their border but drop the rounded shadow */
+  .rounded-xl, .rounded-2xl {
+    border: 1px solid #e5e7eb !important;
+    break-inside: avoid;
+  }
+
+  /* Tables */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    break-inside: auto;
+  }
+  table th, table td {
+    border: 1px solid #e5e7eb !important;
+    padding: 6pt 8pt !important;
+    font-size: 9pt !important;
+  }
+  thead { display: table-header-group; }
+  tr    { break-inside: avoid; break-after: auto; }
+
+  /* Force new pages between major sections */
+  .print-page-break {
+    break-before: page;
+  }
+
+  /* Recharts: keep SVG charts legible on paper */
+  .recharts-wrapper svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Hide all interactive / layout chrome inside Recharts */
+  .recharts-tooltip-wrapper { display: none !important; }
+}

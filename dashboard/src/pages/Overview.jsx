@@ -1,10 +1,14 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, LineChart, Line, Legend,
 } from 'recharts';
 import StatCard from '../components/StatCard';
-import { users, loans, transactions } from '../data/mock';
+import {
+  users, loans, transactions,
+  tradeCreditOrders, floatBalance, graduationQueue, frozenAccounts,
+} from '../data/mock';
 import { zmw, num } from '../utils/fmt';
 
 // ── Compute all stats from raw data ────────────────────────────────────────
@@ -105,6 +109,42 @@ function useOverviewStats() {
       ? Math.round(daysToRepay.reduce((a, b) => a + b, 0) / daysToRepay.length)
       : 0;
 
+    // ── Tier & Trade Credit stats ──────────────────────────────────────────
+    const tier1Users = users.filter(u => u.tier === 'trade_credit').length;
+    const tier2Users = users.filter(u => u.tier === 'loan_credit').length;
+
+    // Today = 2026-04-08 per the mock data
+    const today = '2026-04-08';
+
+    // Trade credit transactions today (any order created_at today, any status)
+    const tcToday = tradeCreditOrders.filter(o => o.created_at.startsWith(today));
+    const tcTxCountToday = tcToday.length;
+
+    // Trade credit fees collected today (sum of service_fee for paid orders)
+    const tcFeesToday = tcToday
+      .filter(o => o.status === 'paid')
+      .reduce((sum, o) => sum + (o.service_fee || 0), 0);
+
+    // Outstanding unpaid trade credit (total ZMW owed across pending/overdue/frozen)
+    const outstandingTradeCredit = tradeCreditOrders
+      .filter(o => ['token_delivered', 'overdue', 'frozen'].includes(o.status))
+      .reduce((sum, o) => sum + (o.total_due || 0), 0);
+
+    // Frozen accounts
+    const frozenCount = frozenAccounts.length;
+
+    // Pending graduation approvals
+    const pendingGraduations = graduationQueue.filter(g => g.status === 'pending').length;
+
+    // Float balance with colour band
+    const floatUnits = floatBalance.total_units;
+    const floatColor = floatUnits > 10000 ? 'text-green-600'
+                     : floatUnits >= 1000 ? 'text-orange-500'
+                     : 'text-red-600';
+    const floatBand = floatUnits > 10000 ? 'Healthy'
+                    : floatUnits >= 1000 ? 'Replenish soon'
+                    : 'CRITICAL — buy now';
+
     return {
       totalUsers,
       activeLoans,
@@ -118,6 +158,18 @@ function useOverviewStats() {
       cumulativeRepayments,
       defaultRate,
       avgDaysToRepay,
+      // New tier/trade credit stats
+      tier1Users,
+      tier2Users,
+      tcTxCountToday,
+      tcFeesToday,
+      outstandingTradeCredit,
+      frozenCount,
+      pendingGraduations,
+      floatUnits,
+      floatValue: floatBalance.total_value_zmw,
+      floatColor,
+      floatBand,
     };
   }, []);
 }
@@ -126,12 +178,112 @@ function useOverviewStats() {
 
 export default function Overview() {
   const s = useOverviewStats();
+  const navigate = useNavigate();
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-navy-700">Overview</h1>
 
-      {/* Stat cards — 6 cards in a 3×2 grid on large screens */}
+      {/* ── Tier & Trade Credit stat cards (4 cols) ──────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Tier 1 — Trade Credit"
+          value={s.tier1Users}
+          sub="Users building credit history"
+          color="text-orange-600"
+        />
+        <StatCard
+          label="Tier 2 — Credit Members"
+          value={s.tier2Users}
+          sub="Graduated to loan credit"
+          color="text-navy-700"
+        />
+        <StatCard
+          label="Trade Credits Today"
+          value={s.tcTxCountToday}
+          sub={`${tradeCreditOrders.filter(o => o.created_at.startsWith('2026-04-08') && o.status === 'paid').length} paid so far`}
+        />
+        <StatCard
+          label="Fees Collected Today"
+          value={zmw(s.tcFeesToday)}
+          color="text-green-600"
+          sub="4% service fee revenue"
+        />
+      </div>
+
+      {/* ── Float, Outstanding, Frozen, Graduations (4 cols) ─────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Float balance with colour band */}
+        <div
+          onClick={() => navigate('/float')}
+          className="bg-white rounded-xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow"
+        >
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Float Balance</p>
+          <p className={`text-2xl font-bold mt-1 ${s.floatColor}`}>
+            {s.floatUnits.toLocaleString()} <span className="text-sm font-semibold text-gray-400">units</span>
+          </p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs text-gray-400">{zmw(s.floatValue)}</p>
+            <span className={`text-[10px] font-bold uppercase ${s.floatColor}`}>
+              {s.floatBand}
+            </span>
+          </div>
+          <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                s.floatUnits > 10000 ? 'bg-green-500'
+                : s.floatUnits >= 1000 ? 'bg-orange-500'
+                : 'bg-red-500'
+              }`}
+              style={{ width: `${Math.min((s.floatUnits / 20000) * 100, 100)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Outstanding trade credit */}
+        <div
+          onClick={() => navigate('/trade-credit')}
+          className="bg-white rounded-xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow"
+        >
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Outstanding Trade Credit</p>
+          <p className="text-2xl font-bold mt-1 text-orange-600">
+            {zmw(s.outstandingTradeCredit)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Total ZMW owed by customers
+          </p>
+        </div>
+
+        {/* Frozen accounts — clickable */}
+        <div
+          onClick={() => navigate('/trade-credit?filter=frozen')}
+          className="bg-white rounded-xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow border border-red-100"
+        >
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Frozen Accounts</p>
+          <p className={`text-2xl font-bold mt-1 ${s.frozenCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+            {s.frozenCount}
+          </p>
+          <p className="text-xs text-red-500 mt-1 font-medium">
+            {s.frozenCount > 0 ? 'Click to review →' : 'All clear'}
+          </p>
+        </div>
+
+        {/* Pending graduations — clickable */}
+        <div
+          onClick={() => navigate('/graduation')}
+          className="bg-white rounded-xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow border border-yellow-100"
+        >
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Pending Graduations</p>
+          <p className={`text-2xl font-bold mt-1 ${s.pendingGraduations > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>
+            {s.pendingGraduations}
+          </p>
+          <p className="text-xs text-yellow-700 mt-1 font-medium">
+            {s.pendingGraduations > 0 ? 'Awaiting review →' : 'Queue empty'}
+          </p>
+        </div>
+      </div>
+
+      {/* ── Classic loan stats (3 col) ───────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard
           label="Total Users"
