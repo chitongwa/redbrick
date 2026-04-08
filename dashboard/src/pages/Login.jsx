@@ -38,7 +38,8 @@ export default function Login() {
               <span className="text-brick-500">Brick</span>
             </h1>
           </div>
-          <p className="text-gray-500 text-sm">Admin Dashboard</p>
+          <p className="text-gray-400 text-xs uppercase tracking-wide">Electricity Credit — Zambia</p>
+          <p className="text-gray-500 text-sm mt-1">Admin Dashboard</p>
         </div>
 
         {error && (

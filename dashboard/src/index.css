@@ -9,3 +9,17 @@
 .animate-slide-in {
   animation: slide-in 0.25s ease-out;
 }
+
+/* Loading spinner */
+@keyframes spin-ring {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: #ec6650;
+  border-radius: 50%;
+  animation: spin-ring 0.8s linear infinite;
+}

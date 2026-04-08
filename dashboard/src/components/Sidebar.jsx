@@ -31,14 +31,17 @@ export default function Sidebar({ open, onClose }) {
       >
         {/* Brand */}
         <div className="px-6 py-5 border-b border-navy-500">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">⚡</span>
-            <span className="text-lg font-extrabold tracking-tight">
-              <span className="text-white">Red</span>
-              <span className="text-brick-400">Brick</span>
-            </span>
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">⚡</span>
+            <div>
+              <h1 className="text-xl font-extrabold tracking-tight leading-tight" style={{ color: '#1E3A5F' }}>
+                <span className="text-white">Red</span><span className="text-brick-400">Brick</span>
+              </h1>
+              <p className="text-navy-300 text-[10px] tracking-wide uppercase leading-tight">
+                Electricity Credit — Zambia
+              </p>
+            </div>
           </div>
-          <p className="text-navy-300 text-xs mt-1">Admin Dashboard</p>
         </div>
 
         {/* Navigation */}

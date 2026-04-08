@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import StatCard from '../components/StatCard';
 import { users, loans, transactions } from '../data/mock';
+import { zmw, num } from '../utils/fmt';
 
 // ── Compute all stats from raw data ────────────────────────────────────────
 
@@ -150,7 +151,7 @@ export default function Overview() {
         />
         <StatCard
           label="Total Disbursed"
-          value={`ZMW ${s.totalDisbursed.toLocaleString()}`}
+          value={zmw(s.totalDisbursed)}
         />
         <StatCard
           label="Overdue Loans"
@@ -160,7 +161,7 @@ export default function Overview() {
         />
         <StatCard
           label="Avg Credit Limit"
-          value={`ZMW ${s.avgCreditLimit.toLocaleString()}`}
+          value={zmw(s.avgCreditLimit)}
           sub="Based on ZESCO history"
         />
       </div>
@@ -192,7 +193,7 @@ export default function Overview() {
                   boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                   fontSize: '13px',
                 }}
-                formatter={(value) => [`ZMW ${value.toLocaleString()}`, 'Disbursed']}
+                formatter={(value) => [zmw(value), 'Disbursed']}
                 cursor={{ fill: 'rgba(30, 58, 95, 0.05)' }}
               />
               <Bar dataKey="amount" radius={[6, 6, 0, 0]} maxBarSize={48}>
@@ -207,8 +208,7 @@ export default function Overview() {
           </ResponsiveContainer>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          Total across last 6 months: ZMW{' '}
-          {s.monthlyDisbursements.reduce((sum, m) => sum + m.amount, 0).toLocaleString()}
+          Total across last 6 months: {zmw(s.monthlyDisbursements.reduce((sum, m) => sum + m.amount, 0))}
         </p>
       </div>
 
@@ -269,7 +269,7 @@ export default function Overview() {
           <div className="bg-white rounded-xl shadow-sm p-6">
             <h3 className="text-sm font-semibold text-navy-700 mb-1">Cumulative Repayments</h3>
             <p className="text-xs text-gray-400 mb-4">
-              Total recovered: ZMW {s.cumulativeRepayments.at(-1)?.cumulative.toLocaleString() || 0}
+              Total recovered: {zmw(s.cumulativeRepayments.at(-1)?.cumulative || 0)}
             </p>
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
@@ -296,7 +296,7 @@ export default function Overview() {
                       fontSize: '13px',
                     }}
                     formatter={(value, name) => [
-                      `ZMW ${value.toLocaleString()}`,
+                      zmw(value),
                       name === 'cumulative' ? 'Cumulative' : 'This Month',
                     ]}
                   />
@@ -392,7 +392,7 @@ export default function Overview() {
                 <tr key={l.id} className="hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-navy-700">{l.user_name}</td>
                   <td className="px-5 py-3 text-gray-500">{l.meter}</td>
-                  <td className="px-5 py-3 text-right font-semibold">ZMW {l.amount}</td>
+                  <td className="px-5 py-3 text-right font-semibold">{zmw(l.amount)}</td>
                   <td className="px-5 py-3">
                     <StatusBadge status={l.status} />
                   </td>

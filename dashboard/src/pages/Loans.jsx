@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { loans } from '../data/mock';
 import { useCsvExport } from '../hooks/useCsvExport';
+import { zmw } from '../utils/fmt';
 
 const STATUS_ORDER = ['all', 'active', 'repaid', 'overdue', 'defaulted'];
 
@@ -108,7 +109,7 @@ export default function Loans() {
                 <tr key={l.id} className="hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-navy-700 whitespace-nowrap">{l.user_name}</td>
                   <td className="px-5 py-3 text-gray-500 font-mono text-xs">{l.meter}</td>
-                  <td className="px-5 py-3 text-right font-semibold text-navy-700">ZMW {l.amount}</td>
+                  <td className="px-5 py-3 text-right font-semibold text-navy-700">{zmw(l.amount)}</td>
                   <td className="px-5 py-3 text-gray-400">{l.created_at}</td>
                   <td className="px-5 py-3 text-gray-400">{l.due_date}</td>
                   <td className="px-5 py-3">
@@ -134,7 +135,7 @@ export default function Loans() {
       {/* Footer summary */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
         <span>{filtered.length} of {loans.length} loans</span>
-        <span>Showing ZMW {filteredTotal.toLocaleString()} disbursed</span>
+        <span>Showing {zmw(filteredTotal)} disbursed</span>
       </div>
     </div>
   );

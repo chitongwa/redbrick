@@ -1,5 +1,6 @@
 import StatCard from '../components/StatCard';
 import { scoringData } from '../data/mock';
+import { zmw } from '../utils/fmt';
 
 const maxCount = Math.max(...scoringData.distribution.map((d) => d.count));
 
@@ -9,7 +10,7 @@ export default function Scoring() {
       <h1 className="text-xl font-bold text-navy-700">Scoring Monitor</h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Avg Credit Limit" value={`ZMW ${scoringData.avgCreditLimit}`} />
+        <StatCard label="Avg Credit Limit" value={zmw(scoringData.avgCreditLimit)} />
         <StatCard label="Customers Scored" value={scoringData.totalScored.toLocaleString()} />
         <StatCard label="Model Version" value={scoringData.modelVersion} />
       </div>

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { users, loans, transactions } from '../data/mock';
+import { zmw } from '../utils/fmt';
 
 export default function Users() {
   const [search, setSearch] = useState('');
@@ -77,7 +78,7 @@ export default function Users() {
                   </td>
                   <td className="px-5 py-3 text-gray-400">{u.created_at}</td>
                   <td className="px-5 py-3 text-right font-semibold text-navy-700">
-                    {userTotals[u.id] > 0 ? `ZMW ${userTotals[u.id].toLocaleString()}` : '—'}
+                    {userTotals[u.id] > 0 ? zmw(userTotals[u.id]) : '—'}
                   </td>
                   <td className="px-5 py-3">
                     <button
@@ -164,8 +165,8 @@ function UserPanel({ user, onClose }) {
             <MiniStat label="Meters" value={user.meters} />
             <MiniStat label="Neighbourhood" value={user.neighbourhood || '—'} />
             <MiniStat label="Registered" value={user.created_at} />
-            <MiniStat label="Total Borrowed" value={totalBorrowed > 0 ? `ZMW ${totalBorrowed.toLocaleString()}` : '—'} />
-            <MiniStat label="ZESCO Spend" value={`ZMW ${totalSpent.toLocaleString()}`} />
+            <MiniStat label="Total Borrowed" value={totalBorrowed > 0 ? zmw(totalBorrowed) : '—'} />
+            <MiniStat label="ZESCO Spend" value={zmw(totalSpent)} />
           </div>
 
           {/* Loans section */}
@@ -180,7 +181,7 @@ function UserPanel({ user, onClose }) {
                 {userLoans.map(l => (
                   <div key={l.id} className="bg-gray-50 rounded-lg p-3 flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-semibold text-navy-700">ZMW {l.amount}</p>
+                      <p className="text-sm font-semibold text-navy-700">{zmw(l.amount)}</p>
                       <p className="text-xs text-gray-400">
                         {l.created_at} &rarr; due {l.due_date}
                       </p>
@@ -219,7 +220,7 @@ function UserPanel({ user, onClose }) {
                     {userTxs.map(t => (
                       <tr key={t.id} className="hover:bg-gray-50">
                         <td className="px-3 py-2 text-gray-500">{t.purchased_at}</td>
-                        <td className="px-3 py-2 text-right font-medium text-navy-700">ZMW {t.amount_zmw}</td>
+                        <td className="px-3 py-2 text-right font-medium text-navy-700">{zmw(t.amount_zmw)}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{t.units_purchased}</td>
                         <td className="px-3 py-2 text-gray-400">{t.meter_number}</td>
                       </tr>

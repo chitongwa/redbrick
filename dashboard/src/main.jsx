@@ -5,6 +5,7 @@ import './index.css';
 
 import Login from './pages/Login';
 import RequireAuth from './components/RequireAuth';
+import LoadingScreen from './components/LoadingScreen';
 import DashLayout from './components/DashLayout';
 import Overview from './pages/Overview';
 import Users from './pages/Users';
@@ -25,7 +26,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route
           element={
             <RequireAuth>
-              <DashLayout />
+              <LoadingScreen>
+                <DashLayout />
+              </LoadingScreen>
             </RequireAuth>
           }
         >
