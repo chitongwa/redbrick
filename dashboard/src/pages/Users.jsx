@@ -60,6 +60,7 @@ export default function Users() {
               <tr>
                 <th className="px-5 py-3 text-left">Name</th>
                 <th className="px-5 py-3 text-left">Phone</th>
+                <th className="px-5 py-3 text-left">Tier</th>
                 <th className="px-5 py-3 text-right">Meters</th>
                 <th className="px-5 py-3 text-left">KYC</th>
                 <th className="px-5 py-3 text-left">Registered</th>
@@ -72,6 +73,7 @@ export default function Users() {
                 <tr key={u.id} className="hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-navy-700">{u.full_name}</td>
                   <td className="px-5 py-3 text-gray-500">{u.phone_number}</td>
+                  <td className="px-5 py-3"><TierBadge tier={u.tier} /></td>
                   <td className="px-5 py-3 text-right">{u.meters}</td>
                   <td className="px-5 py-3">
                     <KycBadge status={u.kyc_status} />
@@ -92,7 +94,7 @@ export default function Users() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-gray-400">
+                  <td colSpan={8} className="px-5 py-8 text-center text-gray-400">
                     No users found
                   </td>
                 </tr>
@@ -159,6 +161,14 @@ function UserPanel({ user, onClose }) {
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
+          {/* Tier badge */}
+          <div className="flex items-center gap-2">
+            <TierBadge tier={user.tier} />
+            {user.tier_upgraded_at && (
+              <span className="text-[10px] text-gray-400">Upgraded {user.tier_upgraded_at}</span>
+            )}
+          </div>
+
           {/* Quick stats */}
           <div className="grid grid-cols-2 gap-3">
             <MiniStat label="KYC Status" value={<KycBadge status={user.kyc_status} />} />
@@ -167,6 +177,12 @@ function UserPanel({ user, onClose }) {
             <MiniStat label="Registered" value={user.created_at} />
             <MiniStat label="Total Borrowed" value={totalBorrowed > 0 ? zmw(totalBorrowed) : '—'} />
             <MiniStat label="ZESCO Spend" value={zmw(totalSpent)} />
+            <MiniStat label="Trade Credits" value={user.trade_credit_transactions} />
+            <MiniStat label="Defaults" value={
+              <span className={user.trade_credit_default_count > 0 ? 'text-red-600' : 'text-green-600'}>
+                {user.trade_credit_default_count}
+              </span>
+            } />
           </div>
 
           {/* Loans section */}
@@ -272,6 +288,18 @@ function StatusBadge({ status }) {
   return (
     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${styles[status] || 'bg-gray-50 text-gray-600'}`}>
       {status}
+    </span>
+  );
+}
+
+function TierBadge({ tier }) {
+  const isLoan = tier === 'loan_credit';
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+      isLoan ? 'bg-navy-50 text-navy-700' : 'bg-orange-50 text-orange-700'
+    }`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${isLoan ? 'bg-navy-500' : 'bg-orange-500'}`} />
+      {isLoan ? 'Tier 2 — Loan' : 'Tier 1 — Trade'}
     </span>
   );
 }

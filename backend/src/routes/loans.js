@@ -25,6 +25,32 @@ router.post(
       const meterId = parseInt(req.body.meter_id, 10);
       const amount  = parseFloat(req.body.amount);
 
+      // ── Tier gate: only Tier 2 (loan_credit) customers can borrow ──
+      const userResult = await query(
+        'SELECT id, tier, account_frozen FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const borrower = userResult.rows[0];
+
+      if (borrower.tier !== 'loan_credit') {
+        return res.status(403).json({
+          error: 'Loan credit is only available to Tier 2 customers',
+          current_tier: borrower.tier,
+          hint: 'Complete trade credit transactions to qualify for graduation to Tier 2.',
+        });
+      }
+
+      if (borrower.account_frozen) {
+        return res.status(403).json({
+          error: 'Account is frozen — please settle outstanding trade credit orders first',
+        });
+      }
+
       // Verify meter ownership
       const meter = await query(
         'SELECT id, meter_number, user_id, zesco_verified FROM meters WHERE id = $1',

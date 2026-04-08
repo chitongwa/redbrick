@@ -46,13 +46,15 @@ router.post(
         return res.status(401).json({ error: check.reason });
       }
 
-      // Upsert user (create on first login)
+      // Upsert user (create on first login — always starts on Tier 1: trade_credit)
       const fullName = req.body.full_name || phone;
       const upsert = await query(
-        `INSERT INTO users (phone_number, full_name)
-         VALUES ($1, $2)
+        `INSERT INTO users (phone_number, full_name, tier)
+         VALUES ($1, $2, 'trade_credit')
          ON CONFLICT (phone_number) DO UPDATE SET phone_number = EXCLUDED.phone_number
-         RETURNING id, phone_number, full_name, kyc_status`,
+         RETURNING id, phone_number, full_name, kyc_status,
+                   tier, tier_upgraded_at, trade_credit_transactions,
+                   trade_credit_default_count, account_frozen`,
         [phone, fullName]
       );
 
@@ -68,10 +70,15 @@ router.post(
         message: 'Authenticated',
         token,
         user: {
-          id: user.id,
-          phone_number: user.phone_number,
-          full_name: user.full_name,
-          kyc_status: user.kyc_status,
+          id:                         user.id,
+          phone_number:               user.phone_number,
+          full_name:                  user.full_name,
+          kyc_status:                 user.kyc_status,
+          tier:                       user.tier,
+          tier_upgraded_at:           user.tier_upgraded_at,
+          trade_credit_transactions:  user.trade_credit_transactions,
+          trade_credit_default_count: user.trade_credit_default_count,
+          account_frozen:             user.account_frozen,
         },
       });
     } catch (err) {

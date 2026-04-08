@@ -44,8 +44,90 @@ function mockQuery(text, params) {
         phone_number: phone,
         full_name: params[1] || phone,
         kyc_status: 'verified',
+        tier: 'trade_credit',
+        tier_upgraded_at: null,
+        trade_credit_transactions: 0,
+        trade_credit_default_count: 0,
+        account_frozen: false,
       }],
     });
+  }
+
+  // User profile lookup (GET /users/me)
+  if (sql.includes('from users') && sql.includes('where') && sql.includes('id')) {
+    return Promise.resolve({
+      rows: [{
+        id: params[0],
+        phone_number: '+260912345678',
+        full_name: 'Mock User',
+        kyc_status: 'verified',
+        tier: 'trade_credit',
+        tier_upgraded_at: null,
+        trade_credit_transactions: 3,
+        trade_credit_default_count: 0,
+        account_frozen: false,
+        created_at: '2025-10-14T00:00:00Z',
+      }],
+    });
+  }
+
+  // User tier update (upgrade to loan_credit)
+  if (sql.includes('update users') && sql.includes('tier')) {
+    return Promise.resolve({ rows: [], rowCount: 1 });
+  }
+
+  // User increment trade_credit_transactions or default count
+  if (sql.includes('update users') && (sql.includes('trade_credit_transactions') || sql.includes('account_frozen'))) {
+    return Promise.resolve({ rows: [], rowCount: 1 });
+  }
+
+  // Trade credit order insert
+  if (sql.includes('insert into trade_credit_orders')) {
+    return Promise.resolve({
+      rows: [{
+        id: 'mock-tco-1',
+        user_id: params[0],
+        meter_id: params[1],
+        electricity_amt: params[2],
+        service_fee: params[3],
+        total_due: params[4],
+        token_delivered: params[5],
+        units_kwh: params[6],
+        status: 'pending_payment',
+        payment_due_at: params[7],
+        created_at: new Date().toISOString(),
+      }],
+    });
+  }
+
+  // Trade credit order lookup by id
+  if (sql.includes('from trade_credit_orders') && sql.includes('where') && !sql.includes('count')) {
+    return Promise.resolve({
+      rows: [{
+        id: params[0],
+        user_id: '__mock_any__',
+        meter_id: 'mock-meter-1',
+        electricity_amt: 100,
+        service_fee: 4,
+        total_due: 104,
+        token_delivered: '5738 2041 9637 1084 2956',
+        units_kwh: 40,
+        status: 'pending_payment',
+        payment_due_at: new Date(Date.now() + 48 * 3600000).toISOString(),
+        created_at: new Date().toISOString(),
+        paid_at: null,
+      }],
+    });
+  }
+
+  // Trade credit order update (payment or freeze)
+  if (sql.includes('update trade_credit_orders')) {
+    return Promise.resolve({ rows: [], rowCount: 1 });
+  }
+
+  // Trade credit orders list for user
+  if (sql.includes('from trade_credit_orders') && sql.includes('count')) {
+    return Promise.resolve({ rows: [{ total: 1 }] });
   }
 
   // Meter existence check by meter_number (POST /meters/add duplicate check)

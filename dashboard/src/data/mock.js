@@ -3,16 +3,19 @@
 
 // ─── Users ──────────────────────────────────────────────────────────────────
 export const users = [
-  { id: 1,  full_name: 'Grace Mwamba',     phone_number: '+260 97 1234567', kyc_status: 'verified', meters: 2, neighbourhood: 'Chilenje',      created_at: '2025-10-14' },
-  { id: 2,  full_name: 'Joseph Phiri',     phone_number: '+260 96 2345678', kyc_status: 'verified', meters: 1, neighbourhood: 'Kalingalinga',   created_at: '2025-11-02' },
-  { id: 3,  full_name: 'Bwalya Mutale',    phone_number: '+260 97 3456789', kyc_status: 'verified', meters: 1, neighbourhood: 'Mtendere',       created_at: '2025-12-18' },
-  { id: 4,  full_name: 'Chisomo Banda',    phone_number: '+260 96 4567890', kyc_status: 'verified', meters: 1, neighbourhood: 'Kanyama',        created_at: '2026-01-05' },
-  { id: 5,  full_name: 'Natasha Tembo',    phone_number: '+260 97 5678901', kyc_status: 'verified', meters: 2, neighbourhood: 'Woodlands',      created_at: '2025-11-22' },
-  { id: 6,  full_name: 'Emmanuel Zulu',    phone_number: '+260 96 6789012', kyc_status: 'pending',  meters: 1, neighbourhood: 'Chelstone',      created_at: '2026-03-10' },
-  { id: 7,  full_name: 'Mwila Kasonde',    phone_number: '+260 97 7890123', kyc_status: 'verified', meters: 1, neighbourhood: 'Chawama',        created_at: '2025-12-01' },
-  { id: 8,  full_name: 'Thandiwe Mulenga', phone_number: '+260 96 8901234', kyc_status: 'verified', meters: 1, neighbourhood: 'Roma',           created_at: '2026-02-14' },
-  { id: 9,  full_name: 'Patrick Chilufya', phone_number: '+260 97 9012345', kyc_status: 'pending',  meters: 1, neighbourhood: 'Kabwata',        created_at: '2026-03-25' },
-  { id: 10, full_name: 'Dalitso Nkonde',   phone_number: '+260 96 0123456', kyc_status: 'rejected', meters: 0, neighbourhood: 'Matero',         created_at: '2026-02-28' },
+  // Tier 2 — graduated to loan_credit (3 users: high trade credit history, 0 defaults)
+  { id: 1,  full_name: 'Grace Mwamba',     phone_number: '+260 97 1234567', kyc_status: 'verified', meters: 2, neighbourhood: 'Chilenje',      created_at: '2025-10-14', tier: 'loan_credit',  tier_upgraded_at: '2026-02-01', trade_credit_transactions: 12, trade_credit_default_count: 0 },
+  { id: 5,  full_name: 'Natasha Tembo',    phone_number: '+260 97 5678901', kyc_status: 'verified', meters: 2, neighbourhood: 'Woodlands',      created_at: '2025-11-22', tier: 'loan_credit',  tier_upgraded_at: '2026-03-05', trade_credit_transactions: 10, trade_credit_default_count: 0 },
+  { id: 8,  full_name: 'Thandiwe Mulenga', phone_number: '+260 96 8901234', kyc_status: 'verified', meters: 1, neighbourhood: 'Roma',           created_at: '2026-02-14', tier: 'loan_credit',  tier_upgraded_at: '2026-03-28', trade_credit_transactions: 8,  trade_credit_default_count: 0 },
+
+  // Tier 1 — trade_credit (7 users: building up history)
+  { id: 2,  full_name: 'Joseph Phiri',     phone_number: '+260 96 2345678', kyc_status: 'verified', meters: 1, neighbourhood: 'Kalingalinga',   created_at: '2025-11-02', tier: 'trade_credit', tier_upgraded_at: null,         trade_credit_transactions: 5,  trade_credit_default_count: 1 },
+  { id: 3,  full_name: 'Bwalya Mutale',    phone_number: '+260 97 3456789', kyc_status: 'verified', meters: 1, neighbourhood: 'Mtendere',       created_at: '2025-12-18', tier: 'trade_credit', tier_upgraded_at: null,         trade_credit_transactions: 4,  trade_credit_default_count: 0 },
+  { id: 4,  full_name: 'Chisomo Banda',    phone_number: '+260 96 4567890', kyc_status: 'verified', meters: 1, neighbourhood: 'Kanyama',        created_at: '2026-01-05', tier: 'trade_credit', tier_upgraded_at: null,         trade_credit_transactions: 3,  trade_credit_default_count: 1 },
+  { id: 6,  full_name: 'Emmanuel Zulu',    phone_number: '+260 96 6789012', kyc_status: 'pending',  meters: 1, neighbourhood: 'Chelstone',      created_at: '2026-03-10', tier: 'trade_credit', tier_upgraded_at: null,         trade_credit_transactions: 1,  trade_credit_default_count: 0 },
+  { id: 7,  full_name: 'Mwila Kasonde',    phone_number: '+260 97 7890123', kyc_status: 'verified', meters: 1, neighbourhood: 'Chawama',        created_at: '2025-12-01', tier: 'trade_credit', tier_upgraded_at: null,         trade_credit_transactions: 6,  trade_credit_default_count: 0 },
+  { id: 9,  full_name: 'Patrick Chilufya', phone_number: '+260 97 9012345', kyc_status: 'pending',  meters: 1, neighbourhood: 'Kabwata',        created_at: '2026-03-25', tier: 'trade_credit', tier_upgraded_at: null,         trade_credit_transactions: 0,  trade_credit_default_count: 0 },
+  { id: 10, full_name: 'Dalitso Nkonde',   phone_number: '+260 96 0123456', kyc_status: 'rejected', meters: 0, neighbourhood: 'Matero',         created_at: '2026-02-28', tier: 'trade_credit', tier_upgraded_at: null,         trade_credit_transactions: 2,  trade_credit_default_count: 0 },
 ];
 
 // ─── Loans ──────────────────────────────────────────────────────────────────
