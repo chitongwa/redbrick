@@ -29,7 +29,7 @@ export default function Loans() {
 
       {/* Status filter chips */}
       <div className="flex flex-wrap gap-2">
-        {['all', 'active', 'repaid', 'defaulted'].map((s) => (
+        {['all', 'active', 'repaid', 'overdue', 'defaulted'].map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -95,6 +95,7 @@ function StatusBadge({ status }) {
   const styles = {
     active:    'bg-blue-50 text-blue-700',
     repaid:    'bg-green-50 text-green-700',
+    overdue:   'bg-orange-50 text-orange-700',
     defaulted: 'bg-red-50 text-red-700',
   };
   return (

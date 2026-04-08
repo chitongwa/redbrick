@@ -56,6 +56,7 @@ function StatusBadge({ status }) {
   const styles = {
     active:    'bg-blue-50 text-blue-700',
     repaid:    'bg-green-50 text-green-700',
+    overdue:   'bg-orange-50 text-orange-700',
     defaulted: 'bg-red-50 text-red-700',
     pending:   'bg-yellow-50 text-yellow-700',
   };
