@@ -6,14 +6,18 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "test": "node --test tests/"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --verbose"
   },
   "dependencies": {
+    "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.0",
-    "dotenv": "^16.4.7",
     "twilio": "^5.4.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@jest/globals": "^30.3.0",
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2"
+  }
 }
